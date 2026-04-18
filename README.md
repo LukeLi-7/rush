@@ -1,4 +1,4 @@
-# ReAct Agent CLI
+# Rush - ReAct Agent CLI
 
 基于 ReAct(Reasoning + Acting)框架的命令行 AI Agent,使用 DeepSeek API。
 
@@ -32,7 +32,7 @@ pip install -r requirements.txt
 
 运行程序:
 ```bash
-python react_agent.py
+python main.py
 ```
 
 ### 内置命令
