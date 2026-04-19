@@ -97,8 +97,10 @@ def main():
                 continue
             
             # 处理内置命令
-            if not handle_command(user_input, agent):
-                break
+            if user_input.startswith('/'):
+                if not handle_command(user_input, agent):
+                    break
+                continue  # 命令处理后跳过 Agent 执行
             
             # 运行 ReAct Agent
             result = agent.run(user_input)

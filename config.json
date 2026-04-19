@@ -1,5 +1,9 @@
 {
     "api_key": "sk-*******",
     "base_url": "https://api.deepseek.com",
-    "model": "deepseek-chat"
+    "model": "deepseek-chat",
+    "vector_db": {
+        "provider": "chromadb",
+        "persist_directory": "~/.rush/chromadb"
+    }
 }

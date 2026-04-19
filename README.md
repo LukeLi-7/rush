@@ -5,6 +5,7 @@
 ## 功能特性
 
 - ✅ **Function Calling** - 使用结构化 API 进行工具调用,不占用上下文窗口
+- ✅ **RAG 知识检索** - 基于向量数据库的知识检索与增强生成
 - ✅ **Provider 抽象层** - 支持多种 LLM 提供商(DeepSeek/OpenAI/Qwen),易于扩展
 - ✅ **ReAct 框架** - Thought → Action → Observation 循环机制
 - ✅ **模块化设计** - 配置、Agent、工具完全分离
@@ -29,12 +30,19 @@ rush/
     │       ├── __init__.py
     │       ├── base.py        # Provider 抽象基类
     │       └── openai_compatible.py  # OpenAI 兼容实现
+    ├── vector_db/             # 向量数据库模块
+    │   ├── __init__.py
+    │   └── providers/
+    │       ├── __init__.py
+    │       ├── base.py        # VectorDBProvider 抽象基类
+    │       └── chromadb.py    # ChromaDB 实现
     └── tools/                 # 工具模块
         ├── __init__.py
         ├── base.py            # 工具基类
         ├── file_read.py       # 文件读取工具
         ├── file_write.py      # 文件写入工具
-        └── command_exec.py    # 命令执行工具
+        ├── command_exec.py    # 命令执行工具
+        └── rag.py             # RAG 知识检索工具
 ```
 
 ## 安装
@@ -51,8 +59,49 @@ pip install -r requirements.txt
 {
     "api_key": "your_deepseek_api_key_here",
     "base_url": "https://api.deepseek.com/v1",
-    "model": "deepseek-chat"
+    "model": "deepseek-chat",
+    "vector_db": {
+        "provider": "chromadb",
+        "persist_directory": "~/.rush/chromadb"
+    }
 }
+```
+
+## RAG (检索增强生成) 使用说明
+
+Rush 集成了基于 ChromaDB 的向量数据库,支持 RAG 功能:
+
+### 工作原理
+
+1. **知识存储** - 使用 `knowledge_add` 工具将知识保存到向量数据库
+2. **语义搜索** - 使用 `knowledge_search` 工具进行相似度检索
+3. **增强回答** - Agent 结合检索结果生成更准确的答案
+
+### 使用示例
+
+```python
+# 1. 添加知识到知识库
+knowledge_add('Python 是一种高级编程语言', source='维基百科')
+knowledge_add('ChromaDB 是轻量级向量数据库', source='技术文档')
+
+# 2. 从知识库中搜索
+knowledge_search('Python 是什么?')
+# 返回相关的知识片段
+
+# 3. Agent 自动使用 RAG
+# 当用户询问知识性问题时,Agent 会自动调用 knowledge_search
+```
+
+### 向量数据库特性
+
+- ✅ **轻量级嵌入** - 无需安装 torch/sentence-transformers (节省 ~2GB)
+- ✅ **本地持久化** - 数据保存在 `~/.rush/chromadb`,重启不丢失
+- ✅ **可扩展架构** - 通过 Provider 抽象层支持切换其他向量数据库
+- ✅ **语义搜索** - 基于词频哈希的向量相似度计算
+
+3. 安装依赖:
+```bash
+pip install -r requirements.txt
 ```
 
 ## 使用方法
@@ -87,6 +136,16 @@ python main.py
    command_exec('grep pattern file.txt')
    ```
 
+4. **knowledge_search** - 从知识库中搜索相关信息(RAG)
+   ```
+   knowledge_search('Python 是什么?')
+   ```
+
+5. **knowledge_add** - 向知识库添加新知识
+   ```
+   knowledge_add('Rush 是一个 AI Agent 框架', source='项目文档')
+   ```
+
 ## 技术架构
 
 ### 系统架构图
@@ -119,6 +178,7 @@ graph TB
     
     style Agent fill:#e1f5ff
     style Provider fill:#fff4e1
+    style VectorDB fill:#e1ffe8
     style Tools fill:#f0ffe1
     style LLM fill:#ffe1f0
 ```
@@ -190,6 +250,32 @@ class MyProvider(LLMProvider):
 ```
 
 ## 示例对话
+
+### RAG 知识检索
+
+```
+[Rush] > Python 是什么?
+
+============================================================
+问题: Python 是什么?
+============================================================
+
+使用 Provider: OpenAI-Compatible (deepseek-chat)
+
+[迭代 1/5]
+调用工具: knowledge_search({'query': 'Python 编程语言'})
+工具结果: [1] Python 是一种高级编程语言,由 Guido van Rossum 于 1991 年首次发布。
+   来源: 维基百科
+
+[2] Python 支持多种编程范式,包括面向对象、函数式和过程式编程。
+   来源: 官方文档
+
+[迭代 2/5]
+
+============================================================
+最终答案: Python 是一种高级编程语言,由 Guido van Rossum 于 1991 年首次发布。它支持多种编程范式...
+============================================================
+```
 
 ### Function Calling 模式
 
@@ -286,13 +372,16 @@ class MyTool(Tool):
 
 ## 配置文件位置
 
-配置文件存储在: `~/.rush/config.json`
+- **配置文件**: `~/.rush/config.json`
+- **向量数据库**: `~/.rush/chromadb` (自动创建)
+- **历史命令**: `~/.rush/history.txt` (自动创建)
 
 ## 技术栈
 
 - **Python** 3.x
 - **openai** >= 1.0.0 - OpenAI 兼容 API 客户端
 - **prompt_toolkit** >= 3.0.0 - 命令行交互界面
+- **chromadb** >= 0.4.0 - 向量数据库
 - **DeepSeek API** - 大语言模型服务
 
 ### 支持的 LLM 提供商

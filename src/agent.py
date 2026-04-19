@@ -4,11 +4,13 @@
 """
 
 import json
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from src.config import read_config
 from src.llm.providers.base import LLMProvider
 from src.llm.providers.openai_compatible import OpenAICompatibleProvider
+from src.vector_db.providers.base import VectorDBProvider
+from src.vector_db.providers.chromadb import ChromaDBProvider
 from src.tools.base import Tool
 from src.tools.file_read import FileReadTool
 from src.tools.file_write import FileWriteTool
@@ -28,10 +30,16 @@ class ReActAgent:
             config_path: 配置文件路径
         """
         # 加载配置
-        config = read_config(config_path)
+        from src.config import load_config
+        actual_config_path = load_config(config_path)
+        config = read_config(actual_config_path)
         
         # 初始化 LLM Provider
         self.provider = self._create_provider(config)
+        
+        # 初始化向量数据库
+        vector_db_config = config.get("vector_db", {})
+        self.vector_db = self._init_vector_db(vector_db_config)
         
         # 注册工具
         self.tools = self._register_tools()
@@ -57,17 +65,59 @@ class ReActAgent:
             model=config.get("model", "deepseek-chat")
         )
     
+    def _init_vector_db(self, config: Dict) -> Optional[VectorDBProvider]:
+        """初始化向量数据库
+        
+        Args:
+            config: 向量数据库配置
+            
+        Returns:
+            Optional[VectorDBProvider]: 向量数据库实例,如果未配置则返回 None
+        """
+        if not config:
+            return None
+        
+        provider_name = config.get("provider", "chromadb")
+        persist_directory = config.get("persist_directory", "~/.rush/chromadb")
+        
+        try:
+            if provider_name == "chromadb":
+                import os
+                db = ChromaDBProvider(
+                    persist_directory=os.path.expanduser(persist_directory)
+                )
+                db.initialize()
+                print(f"✓ 向量数据库初始化成功: {db.get_provider_name()}")
+                return db
+            else:
+                print(f"警告: 不支持的向量数据库类型 '{provider_name}'")
+                return None
+        except Exception as e:
+            import traceback
+            print(f"警告: 向量数据库初始化失败: {str(e)}")
+            print(f"详细错误:\n{traceback.format_exc()}")
+            return None
+    
     def _register_tools(self) -> Dict[str, Tool]:
         """注册可用工具
         
         Returns:
             Dict[str, Tool]: 工具字典
         """
-        return {
+        tools = {
             "file_read": FileReadTool(),
             "file_write": FileWriteTool(),
             "command_exec": CommandExecTool()
         }
+        
+        # 如果向量数据库可用,添加 RAG 工具
+        if self.vector_db:
+            from src.tools.rag import KnowledgeSearchTool, KnowledgeAddTool
+            tools["knowledge_search"] = KnowledgeSearchTool(self)
+            tools["knowledge_add"] = KnowledgeAddTool(self)
+            print("✓ RAG 工具已启用 (knowledge_search, knowledge_add)")
+        
+        return tools
     
     def _get_tool_schemas(self) -> List[Dict]:
         """获取所有工具的 schema
@@ -115,7 +165,21 @@ class ReActAgent:
         messages = [
             {
                 "role": "system", 
-                "content": "你是一个智能助手,可以使用工具帮助用户解决问题。请根据需要使用可用的工具。"
+                "content": """你是一个智能助手,可以使用工具帮助用户解决问题。
+
+可用工具:
+- file_read: 读取文件内容
+- file_write: 写入文件内容
+- command_exec: 执行系统命令
+- knowledge_search: 从知识库中搜索相关信息(当用户询问知识性问题时使用)
+- knowledge_add: 向知识库添加新知识(当用户提供新信息时使用)
+
+使用建议:
+1. 如果用户询问需要专业知识的问题,先使用 knowledge_search 检索相关知识
+2. 如果用户提供了新的知识或信息,可以使用 knowledge_add 保存到知识库
+3. 根据需要使用其他工具完成任务
+
+请根据问题选择合适的工具,不要过度调用工具。"""
             },
             {"role": "user", "content": query}
         ]
