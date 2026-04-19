@@ -32,9 +32,9 @@ rush/
     └── tools/                 # 工具模块
         ├── __init__.py
         ├── base.py            # 工具基类
-        ├── calculator.py      # 计算器工具
-        ├── search.py          # 搜索工具
-        └── weather.py         # 天气工具
+        ├── file_read.py       # 文件读取工具
+        ├── file_write.py      # 文件写入工具
+        └── command_exec.py    # 命令执行工具
 ```
 
 ## 安装
@@ -70,20 +70,21 @@ python main.py
 
 ### 可用工具
 
-1. **calculator** - 执行数学计算
+1. **file_read** - 读取文件内容
    ```
-   calculator('2 + 2')
-   calculator('10 * 5')
-   ```
-
-2. **search** - 搜索信息(模拟)
-   ```
-   search('Python ReAct 框架')
+   file_read('README.md')
+   file_read('/path/to/file.txt')
    ```
 
-3. **weather** - 查询天气(模拟)
+2. **file_write** - 写入文件内容
    ```
-   weather('北京')
+   file_write('output.txt', 'Hello World')
+   ```
+
+3. **command_exec** - 执行系统命令(安全限制)
+   ```
+   command_exec('ls -la')
+   command_exec('grep pattern file.txt')
    ```
 
 ## 技术架构
@@ -102,9 +103,9 @@ graph TB
     Provider -->|实现| OpenAICompat[OpenAICompatibleProvider<br/>DeepSeek/OpenAI/Qwen]
     
     Agent -->|注册| Tools[src/tools/<br/>工具集合]
-    Tools --> Calculator[CalculatorTool]
-    Tools --> Search[SearchTool]
-    Tools --> Weather[WeatherTool]
+    Tools --> FileRead[FileReadTool]
+    Tools --> FileWrite[FileWriteTool]
+    Tools --> CommandExec[CommandExecTool]
     
     Agent -->|循环调用| LLM{LLM API}
     LLM -->|返回| Decision{需要工具?}
@@ -193,22 +194,24 @@ class MyProvider(LLMProvider):
 ### Function Calling 模式
 
 ```
-[Rush] > 计算 123 * 456
+[Rush] > 读取 README.md 文件
 
 ============================================================
-问题: 计算 123 * 456
+问题: 读取 README.md 文件
 ============================================================
 
 使用 Provider: OpenAI-Compatible (deepseek-chat)
 
 [迭代 1/5]
-调用工具: calculator({'expression': '123 * 456'})
-工具结果: 计算结果: 56088
+调用工具: file_read({'path': 'README.md'})
+工具结果: 文件内容:
+# Rush - ReAct Agent CLI
+基于 ReAct(Reasoning + Acting)框架的命令行 AI Agent...
 
 [迭代 2/5]
 
 ============================================================
-最终答案: 123 × 456 = 56088
+最终答案: 我已经读取了 README.md 文件,这是一个基于 ReAct 框架的 AI Agent 项目...
 ============================================================
 ```
 

@@ -10,9 +10,9 @@ from src.config import read_config
 from src.llm.providers.base import LLMProvider
 from src.llm.providers.openai_compatible import OpenAICompatibleProvider
 from src.tools.base import Tool
-from src.tools.calculator import CalculatorTool
-from src.tools.search import SearchTool
-from src.tools.weather import WeatherTool
+from src.tools.file_read import FileReadTool
+from src.tools.file_write import FileWriteTool
+from src.tools.command_exec import CommandExecTool
 
 
 class ReActAgent:
@@ -64,9 +64,9 @@ class ReActAgent:
             Dict[str, Tool]: 工具字典
         """
         return {
-            "calculator": CalculatorTool(),
-            "search": SearchTool(),
-            "weather": WeatherTool()
+            "file_read": FileReadTool(),
+            "file_write": FileWriteTool(),
+            "command_exec": CommandExecTool()
         }
     
     def _get_tool_schemas(self) -> List[Dict]:

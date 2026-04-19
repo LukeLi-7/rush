@@ -71,7 +71,8 @@ def main():
     # 初始化 Agent
     try:
         agent = ReActAgent(config_path)
-        print("\n✓ Agent 初始化成功\n")
+        print("\n✓ Agent 初始化成功")
+        print("="*60 + "\n")
     except Exception as e:
         print(f"\n✗ Agent 初始化失败: {str(e)}")
         print("\n请检查:")
