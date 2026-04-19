@@ -6,6 +6,7 @@
 
 - ✅ **Function Calling** - 使用结构化 API 进行工具调用,不占用上下文窗口
 - ✅ **RAG 知识检索** - 基于向量数据库的知识检索与增强生成
+- ✅ **Agent Skills** - 通过 Markdown 文件定义 Agent 行为准则和专业能力
 - ✅ **Provider 抽象层** - 支持多种 LLM 提供商(DeepSeek/OpenAI/Qwen),易于扩展
 - ✅ **ReAct 框架** - Thought → Action → Observation 循环机制
 - ✅ **模块化设计** - 配置、Agent、工具完全分离
@@ -20,10 +21,19 @@ rush/
 ├── config.json                # 配置文件模板
 ├── requirements.txt           # Python 依赖
 ├── .gitignore                 # Git 忽略文件
+├── .rush/                     # 项目配置目录
+│   └── skills/                # 项目级 Agent Skills
+│       ├── python-expert/
+│       │   └── SKILL.md
+│       └── cli-expert/
+│           └── SKILL.md
 └── src/                       # 源代码目录
     ├── __init__.py
     ├── config.py              # 配置管理模块
     ├── agent.py               # ReAct Agent 核心
+    ├── skills/                # Skill 管理模块
+    │   ├── __init__.py
+    │   └── manager.py         # SkillManager 实现
     ├── llm/                   # LLM Provider 模块
     │   ├── __init__.py
     │   └── providers/
@@ -42,7 +52,8 @@ rush/
         ├── file_read.py       # 文件读取工具
         ├── file_write.py      # 文件写入工具
         ├── command_exec.py    # 命令执行工具
-        └── rag.py             # RAG 知识检索工具
+        ├── rag.py             # RAG 知识检索工具
+        └── skill_tool.py      # Skill 管理工具
 ```
 
 ## 安装
@@ -99,6 +110,193 @@ knowledge_search('Python 是什么?')
 - ✅ **可扩展架构** - 通过 Provider 抽象层支持切换其他向量数据库
 - ✅ **语义搜索** - 基于词频哈希的向量相似度计算
 
+## Agent Skills 使用说明
+
+Agent Skills 是通过 Markdown 文件定义的 Agent 行为准则和专业能力,参考 Claude Code 的设计。
+
+### 什么是 Agent Skills?
+
+Skills 不是工具(Tools),而是:
+- **行为准则**: 定义 Agent 在特定场景下应该如何行动
+- **专业知识**: 注入特定领域的最佳实践和规范
+- **角色定义**: 让 Agent 扮演特定专家角色
+
+### Skills vs Tools 对比
+
+| 特性 | Tools | Skills |
+|------|-------|--------|
+| **本质** | 执行具体操作 | 定义行为准则 |
+| **形式** | Python 类 | Markdown 文件 |
+| **作用** | 读文件、执行命令等 | 指导 Agent 如何思考和回答 |
+| **示例** | file_read, command_exec | python-expert, cli-expert |
+| **管理** | 代码中注册 | 文件系统 + manage_skills 工具 |
+
+### 双层 Skill 结构
+
+Rush 支持**全局**和**项目级**两种 skills:
+
+```
+全局 Skills: ~/.rush/skills/          # 所有项目共享
+  └── general-assistant/
+      └── SKILL.md
+
+项目 Skills: .rush/skills/            # 当前项目专属
+  ├── python-expert/
+  │   └── SKILL.md
+  └── cli-expert/
+      └── SKILL.md
+```
+
+**加载顺序**:
+1. 先加载全局 skills
+2. 再加载项目 skills (同名会覆盖全局 skill)
+
+### Skill 文件格式
+
+每个 skill 是一个目录,包含一个 `SKILL.md` 文件:
+
+```markdown
+---
+name: Python Expert
+description: 专业的 Python 开发工程师,遵循 PEP 8 和最佳实践
+---
+
+# Python 开发最佳实践
+
+## 代码风格
+- 严格遵循 PEP 8 规范
+- 使用 black 或 autopep8 格式化代码
+- 变量和函数使用 snake_case
+
+## 类型注解
+- 所有函数参数和返回值都要添加类型注解
+- 使用 typing 模块提供的高级类型
+```
+
+**关键点**:
+- ✅ 使用 YAML frontmatter 定义 `name` 和 `description`
+- ✅ 不需要额外的 skill.json 文件
+- ✅ 符合 Claude Code 标准
+
+### 使用示例
+
+#### 1. 查看已加载的 skills
+
+```
+[Rush] > 列出可用的 skills
+
+调用工具: manage_skills({'action': 'list'})
+
+当前配置的 Agent Skills:
+
+• General Assistant [全局]
+  状态: ✓ 启用
+  描述: 通用助手,提供友好、专业的帮助
+
+• Python Expert [项目]
+  状态: ✓ 启用
+  描述: 专业的 Python 开发工程师,遵循 PEP 8 和最佳实践
+```
+
+#### 2. 添加新 skill
+
+**项目级 skill** (仅当前项目):
+```bash
+mkdir -p .rush/skills/web-dev
+cat > .rush/skills/web-dev/SKILL.md << 'EOF'
+---
+name: Web Developer
+description: 专业的 Web 开发工程师
+---
+
+# Web 开发最佳实践
+...
+EOF
+```
+
+**全局 skill** (所有项目共享):
+```bash
+mkdir -p ~/.rush/skills/code-review
+cat > ~/.rush/skills/code-review/SKILL.md << 'EOF'
+---
+name: Code Reviewer
+description: 专业的代码审查专家
+---
+
+# 代码审查指南
+...
+EOF
+```
+
+然后刷新:
+```
+[Rush] > 刷新 skills
+
+调用工具: manage_skills({'action': 'refresh'})
+✓ Agent Skills 已刷新
+总计: 4 个
+新的 skills 将在下次对话时生效
+```
+
+**注意**: 
+- Rush 是 CLI 工具,每次启动时会加载所有 skills
+- 如果在会话中添加了新 skill 文件,需要手动刷新
+- 刷新后会重建系统提示词,新 skills 在下次对话时生效
+
+#### 3. 禁用某个 skill
+
+```
+[Rush] > 禁用 Python Expert skill
+
+调用工具: manage_skills({'action': 'disable', 'skill_name': 'Python Expert'})
+✓ 已禁用 skill 'Python Expert',下次对话时生效
+```
+
+### Skill 文件示例
+
+**python-expert/SKILL.md**:
+```markdown
+---
+name: Python Expert
+description: 专业的 Python 开发工程师,遵循 PEP 8 和最佳实践
+---
+
+# Python 开发最佳实践
+
+## 代码风格
+- 使用 PEP 8 规范
+- 变量和函数使用 snake_case
+- 类名使用 PascalCase
+- 添加类型注解
+- 编写文档字符串
+
+## 项目结构
+- 使用模块化设计
+- 分离关注点
+- 遵循单一职责原则
+
+## 测试
+- 编写单元测试
+- 使用 pytest 框架
+- 保持高覆盖率
+```
+
+### Skills vs Tools 对比
+
+| 特性 | Tools | Skills |
+|------|-------|--------|
+| **本质** | 执行具体操作 | 定义行为准则 |
+| **形式** | Python 类 | Markdown 文件 |
+| **作用** | 读文件、执行命令等 | 指导 Agent 如何思考和回答 |
+| **示例** | file_read, command_exec | python-expert, cli-expert |
+| **管理** | 代码中注册 | 文件系统 + manage_skills 工具 |
+
+### 配置文件位置
+
+- **全局 Skills**: `~/.rush/skills/` (所有项目共享)
+- **项目 Skills**: `.rush/skills/` (当前项目专属)
+- **优先级**: 项目 skill 覆盖同名全局 skill
+
 3. 安装依赖:
 ```bash
 pip install -r requirements.txt
@@ -146,6 +344,22 @@ python main.py
    knowledge_add('Rush 是一个 AI Agent 框架', source='项目文档')
    ```
 
+6. **manage_skills** - 管理 Agent Skills
+   ```
+   # 列出所有 skills
+   manage_skills('list')
+   
+   # 刷新 skills (重新扫描文件系统)
+   # 适用场景: 在会话中添加了新 skill 文件后
+   manage_skills('refresh')
+   
+   # 启用 skill
+   manage_skills('enable', 'python_expert')
+   
+   # 禁用 skill
+   manage_skills('disable', 'cli_expert')
+   ```
+
 ## 技术架构
 
 ### 系统架构图
@@ -165,6 +379,10 @@ graph TB
     Tools --> FileRead[FileReadTool]
     Tools --> FileWrite[FileWriteTool]
     Tools --> CommandExec[CommandExecTool]
+    
+    Agent -->|加载| Skills[src/skills/<br/>Skill 管理器]
+    Skills -->|扫描| SkillFiles[.rush/skills/*.md]
+    Skills -->|注入| SysPrompt[系统提示词]
     
     Agent -->|循环调用| LLM{LLM API}
     LLM -->|返回| Decision{需要工具?}
@@ -375,6 +593,7 @@ class MyTool(Tool):
 - **配置文件**: `~/.rush/config.json`
 - **向量数据库**: `~/.rush/chromadb` (自动创建)
 - **历史命令**: `~/.rush/history.txt` (自动创建)
+- **Agent Skills**: `.rush/skills/` (项目级别) 或 `~/.rush/skills/` (全局)
 
 ## 技术栈
 

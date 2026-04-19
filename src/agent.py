@@ -15,6 +15,8 @@ from src.tools.base import Tool
 from src.tools.file_read import FileReadTool
 from src.tools.file_write import FileWriteTool
 from src.tools.command_exec import CommandExecTool
+from src.skills.manager import SkillManager
+from src.tools.skill_tool import SkillManagerTool
 
 
 class ReActAgent:
@@ -41,6 +43,9 @@ class ReActAgent:
         vector_db_config = config.get("vector_db", {})
         self.vector_db = self._init_vector_db(vector_db_config)
         
+        # 初始化 Skill 管理器
+        self.skill_manager = SkillManager()
+        
         # 注册工具
         self.tools = self._register_tools()
         
@@ -49,6 +54,9 @@ class ReActAgent:
         
         # 对话历史
         self.conversation_history = []
+        
+        # 构建系统提示词(包含 skills)
+        self.base_system_prompt = self._build_system_prompt()
     
     def _create_provider(self, config: Dict) -> LLMProvider:
         """创建 LLM Provider
@@ -98,6 +106,41 @@ class ReActAgent:
             print(f"详细错误:\n{traceback.format_exc()}")
             return None
     
+    def _build_system_prompt(self) -> str:
+        """构建基础系统提示词(包含 skills)
+        
+        Returns:
+            str: 系统提示词
+        """
+        base_prompt = """你是一个智能助手,可以使用工具帮助用户解决问题。
+
+重要: 所有回答都必须使用中文(简体中文)。
+
+可用工具:
+- file_read: 读取文件内容
+- file_write: 写入文件内容
+- command_exec: 执行系统命令
+- knowledge_search: 从知识库中搜索相关信息(当用户询问知识性问题时使用)
+- knowledge_add: 向知识库添加新知识(当用户提供新信息时使用)
+- manage_skills: 管理 Agent Skills (list, refresh, enable, disable)
+
+使用建议:
+1. 如果用户询问需要专业知识的问题,先使用 knowledge_search 检索相关知识
+2. 如果用户提供了新的知识或信息,可以使用 knowledge_add 保存到知识库
+3. 如果需要查看或管理 skills,使用 manage_skills
+4. 根据需要使用其他工具完成任务
+
+请根据问题选择合适的工具,不要过度调用工具。"""
+        
+        # 添加已启用的 skills
+        if self.skill_manager:
+            skills_content = self.skill_manager.get_enabled_skills_text()
+            if skills_content:
+                base_prompt += "\n\n=== Agent Skills ==="
+                base_prompt += skills_content
+        
+        return base_prompt
+    
     def _register_tools(self) -> Dict[str, Tool]:
         """注册可用工具
         
@@ -116,6 +159,13 @@ class ReActAgent:
             tools["knowledge_search"] = KnowledgeSearchTool(self)
             tools["knowledge_add"] = KnowledgeAddTool(self)
             print("✓ RAG 工具已启用 (knowledge_search, knowledge_add)")
+        
+        # 添加 Skill 管理工具
+        try:
+            tools["manage_skills"] = SkillManagerTool(self)
+            print("✓ Skill 管理工具已启用 (manage_skills)")
+        except Exception as e:
+            print(f"⚠ Skill 工具加载失败: {e}")
         
         return tools
     
@@ -165,23 +215,7 @@ class ReActAgent:
         messages = [
             {
                 "role": "system", 
-                "content": """你是一个智能助手,可以使用工具帮助用户解决问题。
-
-重要: 所有回答都必须使用中文(简体中文)。
-
-可用工具:
-- file_read: 读取文件内容
-- file_write: 写入文件内容
-- command_exec: 执行系统命令
-- knowledge_search: 从知识库中搜索相关信息(当用户询问知识性问题时使用)
-- knowledge_add: 向知识库添加新知识(当用户提供新信息时使用)
-
-使用建议:
-1. 如果用户询问需要专业知识的问题,先使用 knowledge_search 检索相关知识
-2. 如果用户提供了新的知识或信息,可以使用 knowledge_add 保存到知识库
-3. 根据需要使用其他工具完成任务
-
-请根据问题选择合适的工具,不要过度调用工具。"""
+                "content": self.base_system_prompt
             },
             {"role": "user", "content": query}
         ]
