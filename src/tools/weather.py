@@ -1,5 +1,7 @@
 """天气查询工具"""
 
+from typing import Dict, Any
+
 from src.tools.base import Tool
 
 
@@ -23,3 +25,23 @@ class WeatherTool(Tool):
         """
         # 这里可以集成真实的天气 API
         return f"[天气信息] {city} 的天气: 晴, 温度 20°C (这是一个模拟数据)"
+    
+    def get_schema(self) -> Dict[str, Any]:
+        """获取工具的 Function Calling schema"""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "city": {
+                            "type": "string",
+                            "description": "城市名称,如 '北京', '上海'"
+                        }
+                    },
+                    "required": ["city"]
+                }
+            }
+        }

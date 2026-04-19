@@ -28,7 +28,8 @@ def load_config(config_path: str = None) -> str:
         default_config = {
             "api_key": "your_deepseek_api_key_here",
             "base_url": "https://api.deepseek.com/v1",
-            "model": "deepseek-chat"
+            "model": "deepseek-chat",
+            "_note": "DeepSeek 兼容 OpenAI API,可以直接使用"
         }
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(default_config, f, indent=4, ensure_ascii=False)

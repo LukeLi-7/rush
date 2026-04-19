@@ -1,5 +1,7 @@
 """计算器工具"""
 
+from typing import Dict, Any
+
 from src.tools.base import Tool
 
 
@@ -27,3 +29,23 @@ class CalculatorTool(Tool):
             return f"计算结果: {result}"
         except Exception as e:
             return f"计算错误: {str(e)}"
+    
+    def get_schema(self) -> Dict[str, Any]:
+        """获取工具的 Function Calling schema"""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "expression": {
+                            "type": "string",
+                            "description": "数学表达式,如 '2 + 2' 或 '123 * 456'"
+                        }
+                    },
+                    "required": ["expression"]
+                }
+            }
+        }

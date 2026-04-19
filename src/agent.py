@@ -1,11 +1,14 @@
-"""ReAct Agent 核心模块"""
+"""ReAct Agent 核心模块
 
-import re
-from typing import Dict, Optional, List
+支持 Function Calling 模式,使用结构化 API 进行工具调用
+"""
 
-from openai import OpenAI
+import json
+from typing import Dict, List
 
 from src.config import read_config
+from src.llm.providers.base import LLMProvider
+from src.llm.providers.openai_compatible import OpenAICompatibleProvider
 from src.tools.base import Tool
 from src.tools.calculator import CalculatorTool
 from src.tools.search import SearchTool
@@ -15,7 +18,7 @@ from src.tools.weather import WeatherTool
 class ReActAgent:
     """ReAct 框架 AI Agent
     
-    实现 Reasoning + Acting 循环机制,支持工具调用
+    使用 Function Calling 实现 Reasoning + Acting 循环
     """
     
     def __init__(self, config_path: str = None):
@@ -27,12 +30,8 @@ class ReActAgent:
         # 加载配置
         config = read_config(config_path)
         
-        # 初始化 OpenAI 客户端
-        self.client = OpenAI(
-            api_key=config["api_key"],
-            base_url=config.get("base_url", "https://api.deepseek.com/v1")
-        )
-        self.model = config.get("model", "deepseek-chat")
+        # 初始化 LLM Provider
+        self.provider = self._create_provider(config)
         
         # 注册工具
         self.tools = self._register_tools()
@@ -40,11 +39,23 @@ class ReActAgent:
         # 最大迭代次数
         self.max_iterations = 5
         
-        # 构建系统提示
-        self.system_prompt = self._build_system_prompt()
-        
         # 对话历史
         self.conversation_history = []
+    
+    def _create_provider(self, config: Dict) -> LLMProvider:
+        """创建 LLM Provider
+        
+        Args:
+            config: 配置字典
+            
+        Returns:
+            LLMProvider: Provider 实例
+        """
+        return OpenAICompatibleProvider(
+            api_key=config["api_key"],
+            base_url=config.get("base_url", "https://api.deepseek.com/v1"),
+            model=config.get("model", "deepseek-chat")
+        )
     
     def _register_tools(self) -> Dict[str, Tool]:
         """注册可用工具
@@ -58,100 +69,36 @@ class ReActAgent:
             "weather": WeatherTool()
         }
     
-    def _build_system_prompt(self) -> str:
-        """构建系统提示
+    def _get_tool_schemas(self) -> List[Dict]:
+        """获取所有工具的 schema
         
         Returns:
-            str: 系统提示文本
+            List[Dict]: 工具定义列表
         """
-        tool_descriptions = "\n".join([
-            f"- {tool.name}: {tool.description}"
-            for tool in self.tools.values()
-        ])
-        
-        return f"""你是一个智能助手,使用 ReAct(Reasoning + Acting)框架来解决问题。
-
-可用工具:
-{tool_descriptions}
-
-回答格式要求:
-你必须按照以下格式思考和行动:
-
-Thought: <你的思考过程,分析问题和下一步行动>
-Action: <工具名称>(<参数>)
-Observation: <工具返回的结果>
-
-你可以重复 Thought/Action/Observation 循环多次,直到找到答案。
-
-当你确定知道最终答案时,使用以下格式:
-Thought: 我已经找到了答案
-Final Answer: <你的最终答案>
-
-重要规则:
-1. 每次只能执行一个 Action
-2. 必须等待 Observation 结果后再进行下一步 Thought
-3. 如果不需要工具,直接给出 Final Answer
-4. 最多进行 {self.max_iterations} 次迭代
-
-现在开始!"""
+        return [tool.get_schema() for tool in self.tools.values()]
     
-    def _parse_react_response(self, response: str) -> Dict[str, Optional[str]]:
-        """解析 ReAct 响应
+    def _execute_function(self, name: str, arguments: Dict) -> str:
+        """执行函数调用
         
         Args:
-            response: LLM 响应文本
+            name: 函数名称
+            arguments: 函数字典
             
         Returns:
-            Dict: 包含 thought, action, action_input, final_answer 的字典
+            str: 执行结果
         """
-        result = {
-            "thought": None,
-            "action": None,
-            "action_input": None,
-            "final_answer": None
-        }
+        if name not in self.tools:
+            return f"错误: 未知工具 '{name}'"
         
-        # 提取 Thought
-        thought_match = re.search(r'Thought:\s*(.+?)(?=Action:|Final Answer:|$)', 
-                                  response, re.DOTALL)
-        if thought_match:
-            result["thought"] = thought_match.group(1).strip()
-        
-        # 提取 Final Answer
-        final_answer_match = re.search(r'Final Answer:\s*(.+)', response, re.DOTALL)
-        if final_answer_match:
-            result["final_answer"] = final_answer_match.group(1).strip()
-            return result
-        
-        # 提取 Action
-        action_match = re.search(r'Action:\s*(\w+)\(([^)]*)\)', response)
-        if action_match:
-            result["action"] = action_match.group(1)
-            result["action_input"] = action_match.group(2).strip().strip("'\"")
-        
-        return result
-    
-    def _execute_action(self, action_name: str, action_input: str) -> str:
-        """执行工具动作
-        
-        Args:
-            action_name: 工具名称
-            action_input: 工具参数
-            
-        Returns:
-            str: 工具执行结果
-        """
-        if action_name not in self.tools:
-            return f"错误: 未知工具 '{action_name}'"
-        
-        tool = self.tools[action_name]
+        tool = self.tools[name]
         try:
-            return tool.execute(action_input)
+            # 将参数字典转换为关键字参数
+            return tool.execute(**arguments)
         except Exception as e:
             return f"工具执行错误: {str(e)}"
     
     def run(self, query: str) -> str:
-        """运行 ReAct 循环
+        """运行 ReAct 循环 (Function Calling 模式)
         
         Args:
             query: 用户问题
@@ -162,10 +109,14 @@ Final Answer: <你的最终答案>
         print(f"\n{'='*60}")
         print(f"问题: {query}")
         print(f"{'='*60}\n")
+        print(f"使用 Provider: {self.provider.get_provider_name()}\n")
         
-        # 添加用户问题到历史
+        # 初始化消息历史
         messages = [
-            {"role": "system", "content": self.system_prompt},
+            {
+                "role": "system", 
+                "content": "你是一个智能助手,可以使用工具帮助用户解决问题。请根据需要使用可用的工具。"
+            },
             {"role": "user", "content": query}
         ]
         
@@ -174,45 +125,58 @@ Final Answer: <你的最终答案>
             iteration += 1
             print(f"[迭代 {iteration}/{self.max_iterations}]")
             
-            # 调用 LLM
+            # 调用 LLM (带工具)
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
+                response = self.provider.chat_with_tools(
                     messages=messages,
-                    temperature=0.7,
-                    max_tokens=1000
+                    tools=self._get_tool_schemas()
                 )
-                
-                llm_response = response.choices[0].message.content
-                print(f"LLM 响应:\n{llm_response}\n")
                 
             except Exception as e:
                 return f"API 调用错误: {str(e)}"
             
-            # 解析响应
-            parsed = self._parse_react_response(llm_response)
+            # 情况 1: 有工具调用
+            if response.has_tool_calls:
+                for tool_call in response.tool_calls:
+                    print(f"调用工具: {tool_call.name}({tool_call.arguments})")
+                    
+                    # 执行工具
+                    result = self._execute_function(
+                        tool_call.name, 
+                        tool_call.arguments
+                    )
+                    print(f"工具结果: {result}\n")
+                    
+                    # 添加工具调用和结果到消息历史
+                    messages.append({
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": tool_call.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tool_call.name,
+                                    "arguments": json.dumps(tool_call.arguments)
+                                }
+                            }
+                        ]
+                    })
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result
+                    })
             
-            # 如果有 Final Answer,返回结果
-            if parsed["final_answer"]:
-                print(f"\n{'='*60}")
-                print(f"最终答案: {parsed['final_answer']}")
-                print(f"{'='*60}\n")
-                return parsed["final_answer"]
-            
-            # 如果有 Action,执行工具
-            if parsed["action"] and parsed["action_input"]:
-                print(f"执行工具: {parsed['action']}({parsed['action_input']})")
-                observation = self._execute_action(parsed["action"], parsed["action_input"])
-                print(f"观察结果: {observation}\n")
-                
-                # 将 LLM 响应和观察结果添加到历史
-                messages.append({"role": "assistant", "content": llm_response})
-                messages.append({"role": "user", "content": f"Observation: {observation}"})
+            # 情况 2: 没有工具调用,直接返回文本
             else:
-                # 没有 Action 也没有 Final Answer,可能是格式错误
-                print("警告: 无法解析 LLM 响应,尝试继续...")
-                messages.append({"role": "assistant", "content": llm_response})
-                messages.append({"role": "user", "content": "请按照正确的 ReAct 格式回答"})
+                if response.content:
+                    print(f"\n{'='*60}")
+                    print(f"最终答案: {response.content}")
+                    print(f"{'='*60}\n")
+                    return response.content
+                else:
+                    return "未收到有效响应"
         
         return "达到最大迭代次数,未能找到答案"
     
