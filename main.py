@@ -38,6 +38,17 @@ def print_help(agent: ReActAgent):
     print()
 
 
+def clear_screen():
+    """清除控制台屏幕"""
+    import platform
+    system = platform.system()
+    if system == 'Windows':
+        os.system('cls')
+    else:
+        # macOS, Linux
+        os.system('clear')
+
+
 def handle_command(command: str, agent: ReActAgent) -> bool:
     """处理内置命令
     
@@ -53,6 +64,8 @@ def handle_command(command: str, agent: ReActAgent) -> bool:
         return False
     elif command.lower() == '/clear':
         agent.clear_history()
+        clear_screen()
+        print_welcome()
         return True
     elif command.lower() == '/help':
         print_help(agent)
