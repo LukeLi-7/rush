@@ -167,6 +167,8 @@ class ReActAgent:
                 "role": "system", 
                 "content": """你是一个智能助手,可以使用工具帮助用户解决问题。
 
+重要: 所有回答都必须使用中文(简体中文)。
+
 可用工具:
 - file_read: 读取文件内容
 - file_write: 写入文件内容
