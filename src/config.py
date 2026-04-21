@@ -9,18 +9,29 @@ from typing import Dict, Any
 def load_config(config_path: str = None) -> str:
     """加载配置文件
     
+    支持全局和本地配置:
+    - 全局配置: ~/.rush/config.json
+    - 本地配置: .rush/config.json (覆盖同名的全局配置)
+    
     Args:
-        config_path: 配置文件路径,默认为 ~/.rush/config.json
+        config_path: 配置文件路径,默认为自动检测
         
     Returns:
-        str: 配置文件路径
+        str: 主配置文件路径
         
     Raises:
         FileNotFoundError: 配置文件不存在
         SystemExit: 配置无效时退出程序
     """
     if config_path is None:
-        config_path = os.path.expanduser("~/.rush/config.json")
+        # 优先使用本地配置,否则使用全局配置
+        local_config = os.path.join(os.getcwd(), '.rush', 'config.json')
+        global_config = os.path.expanduser("~/.rush/config.json")
+        
+        if os.path.exists(local_config):
+            config_path = local_config
+        else:
+            config_path = global_config
     
     # 如果配置文件不存在,创建默认配置
     if not os.path.exists(config_path):

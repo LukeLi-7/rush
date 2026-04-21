@@ -35,13 +35,9 @@ ENV/
 .DS_Store
 
 # Project specific
-# 配置文件包含敏感信息,不应提交到版本控制
-config.json
-~/.rush/
-
-# History files
+# 向量数据库和历史记录不提交
+.rush/chromadb/
 .rush/history.txt
-*.history
 
 # Logs
 *.log

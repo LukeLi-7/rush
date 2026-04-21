@@ -7,6 +7,7 @@
 - ✅ **Function Calling** - 使用结构化 API 进行工具调用,不占用上下文窗口
 - ✅ **RAG 知识检索** - 基于向量数据库的知识检索与增强生成
 - ✅ **Agent Skills** - 通过 Markdown 文件定义 Agent 行为准则和专业能力
+- ✅ **MCP 集成** - 支持 Model Context Protocol,动态加载外部工具和服务
 - ✅ **Provider 抽象层** - 支持多种 LLM 提供商(DeepSeek/OpenAI/Qwen),易于扩展
 - ✅ **ReAct 框架** - Thought → Action → Observation 循环机制
 - ✅ **模块化设计** - 配置、Agent、工具完全分离
@@ -18,10 +19,12 @@
 ```
 rush/
 ├── main.py                    # 主入口程序
-├── config.json                # 配置文件模板
 ├── requirements.txt           # Python 依赖
 ├── .gitignore                 # Git 忽略文件
 ├── .rush/                     # 项目配置目录
+│   ├── config.json            # API 配置文件
+│   ├── mcp_servers.json       # MCP Servers 配置
+│   ├── README.md              # 配置说明文档
 │   └── skills/                # 项目级 Agent Skills
 │       ├── python-expert/
 │       │   └── SKILL.md
@@ -34,6 +37,10 @@ rush/
     ├── skills/                # Skill 管理模块
     │   ├── __init__.py
     │   └── manager.py         # SkillManager 实现
+    ├── mcp/                   # MCP 客户端模块
+    │   ├── __init__.py
+    │   ├── client.py          # MCP Client 实现
+    │   └── manager.py         # MCP Manager 实现
     ├── llm/                   # LLM Provider 模块
     │   ├── __init__.py
     │   └── providers/
@@ -53,7 +60,8 @@ rush/
         ├── file_write.py      # 文件写入工具
         ├── command_exec.py    # 命令执行工具
         ├── rag.py             # RAG 知识检索工具
-        └── skill_tool.py      # Skill 管理工具
+        ├── skill_tool.py      # Skill 管理工具
+        └── mcp_tool.py        # MCP 工具适配器
 ```
 
 ## 安装
@@ -64,8 +72,11 @@ pip install -r requirements.txt
 ```
 
 2. 配置 API Key:
-   - 首次运行时会自动创建配置文件 `~/.rush/config.json`
-   - 编辑配置文件,填入你的 DeepSeek API Key:
+   - 支持**全局**和**本地**两种配置 (与 MCP 配置一致)
+   - **全局配置**: `~/.rush/config.json` (所有项目共享)
+   - **本地配置**: `.rush/config.json` (当前项目专属,优先使用)
+   
+   首次运行时会自动创建配置文件,编辑并填入你的 DeepSeek API Key:
 ```json
 {
     "api_key": "your_deepseek_api_key_here",
@@ -77,6 +88,10 @@ pip install -r requirements.txt
     }
 }
 ```
+
+**使用场景:**
+- **全局配置**: 常用的 API Key、通用设置
+- **本地配置**: 项目特定的配置 (如不同的 API Key、模型等)
 
 ## RAG (检索增强生成) 使用说明
 
@@ -297,6 +312,147 @@ description: 专业的 Python 开发工程师,遵循 PEP 8 和最佳实践
 - **项目 Skills**: `.rush/skills/` (当前项目专属)
 - **优先级**: 项目 skill 覆盖同名全局 skill
 
+## MCP (Model Context Protocol) 使用说明
+
+MCP 允许 Agent 动态加载和使用外部工具和服务,如 GitHub、文件系统、数据库等。
+
+### 什么是 MCP?
+
+MCP (Model Context Protocol) 是一个开放协议,让 AI 应用可以:
+- 🔌 **连接外部服务** - GitHub、数据库、文件系统等
+- 🛠️ **使用远程工具** - 通过标准协议调用工具
+- 🔄 **动态扩展** - 运行时添加/移除服务
+
+### 配置 MCP Servers
+
+MCP servers 配置文件与 config.json 保持一致,支持**全局**和**本地**两种配置:
+
+**配置文件位置:**
+- **全局配置**: `~/.rush/mcp_servers.json` (所有项目共享)
+- **本地配置**: `.rush/mcp_servers.json` (当前项目专属)
+
+**加载顺序:**
+1. 先加载全局配置
+2. 再加载本地配置 (同名 server 会覆盖全局配置)
+
+**配置格式:**
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
+      "enabled": true
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your_token_here"
+      },
+      "enabled": true
+    }
+  }
+}
+```
+
+**使用场景:**
+- **全局配置**: 常用的通用 services (如 GitHub、filesystem)
+- **本地配置**: 项目特定的 services (如项目数据库、Git 仓库)
+
+### 安装 MCP Server
+
+```bash
+# 文件系统 server
+npm install -g @modelcontextprotocol/server-filesystem
+
+# GitHub server
+npm install -g @modelcontextprotocol/server-github
+
+# 更多 servers: https://github.com/modelcontextprotocol/servers
+```
+
+### 使用示例
+
+#### 1. Agent 启动时自动连接
+
+Agent 启动时会自动连接所有启用的 MCP servers:
+
+```
+✓ 已加载 2 个 MCP servers (启用: 2)
+✓ 已连接到 MCP server: filesystem-server
+  发现 14 个工具: read_file, read_text_file, write_file, ...
+✓ 已连接到 MCP server: github-mcp-server
+  发现 26 个工具: search_repositories, create_issue, ...
+✓ 已注册 40 个 MCP tools
+```
+
+#### 2. 搜索 GitHub 仓库
+
+```
+[Rush] > 搜索 langchain 相关的 GitHub 仓库
+
+调用工具: mcp_github_search_repositories({'query': 'langchain', 'perPage': 3})
+
+搜索结果:
+1. langchain-ai/langchain - The agent engineering platform
+   Stars: 110k+ | Created: 2022-10-17
+   
+2. langchain4j/langchain4j - Java version of LangChain
+   Stars: 5k+ | Created: 2023-06-20
+```
+
+#### 3. 读取文件内容
+
+```
+[Rush] > 使用 mcp_filesystem_read_text_file 读取 README.md
+
+调用工具: mcp_filesystem_read_text_file({'path': 'README.md'})
+工具结果: # Rush - ReAct Agent CLI
+基于 ReAct(Reasoning + Acting)框架的命令行 AI Agent...
+```
+
+### 可用的 MCP Servers
+
+| Server | 工具数 | 功能 |
+|--------|-------|------|
+| **filesystem** | 14 | 文件读写、目录操作、搜索 |
+| **github** | 26 | 仓库管理、Issues、PRs、搜索 |
+| **git** | 10+ | Git 操作、提交历史、分支管理 |
+| **postgres** | 5+ | PostgreSQL 数据库查询 |
+| **sqlite** | 5+ | SQLite 数据库操作 |
+| **memory** | 8+ | 知识图谱记忆存储 |
+
+完整列表: https://github.com/modelcontextprotocol/servers
+
+### MCP 工具命名规范
+
+MCP 工具命名格式: `mcp_{server_name}_{tool_name}`
+
+例如:
+- `mcp_github_search_repositories` - GitHub 搜索仓库
+- `mcp_filesystem_read_text_file` - 文件系统读取文件
+- `mcp_postgres_query` - PostgreSQL 查询
+
+### 管理命令
+
+```python
+# 列出 servers
+manage_mcp('list')
+
+# 连接/断开
+manage_mcp('connect', 'github')
+manage_mcp('disconnect', 'github')
+
+# 启用/禁用
+manage_mcp('enable', 'filesystem')
+manage_mcp('disable', 'filesystem')
+
+# 添加/移除
+manage_mcp('add', 'git', 'npx', '-y @modelcontextprotocol/server-git')
+manage_mcp('remove', 'git')
+```
+
 3. 安装依赖:
 ```bash
 pip install -r requirements.txt
@@ -358,6 +514,28 @@ python main.py
    
    # 禁用 skill
    manage_skills('disable', 'cli_expert')
+   ```
+
+7. **manage_mcp** - 管理 MCP Servers
+   ```
+   # 列出所有配置的 MCP servers
+   manage_mcp('list')
+   
+   # 连接 MCP server
+   manage_mcp('connect', 'github')
+   
+   # 断开 MCP server
+   manage_mcp('disconnect', 'github')
+   
+   # 启用/禁用 server
+   manage_mcp('enable', 'filesystem')
+   manage_mcp('disable', 'filesystem')
+   
+   # 添加新 server
+   manage_mcp('add', 'git', 'npx', '-y @modelcontextprotocol/server-git')
+   
+   # 移除 server
+   manage_mcp('remove', 'git')
    ```
 
 ## 技术架构
@@ -590,10 +768,23 @@ class MyTool(Tool):
 
 ## 配置文件位置
 
+### 全局配置 (~/.rush/)
 - **配置文件**: `~/.rush/config.json`
+- **MCP Servers**: `~/.rush/mcp_servers.json`
 - **向量数据库**: `~/.rush/chromadb` (自动创建)
 - **历史命令**: `~/.rush/history.txt` (自动创建)
-- **Agent Skills**: `.rush/skills/` (项目级别) 或 `~/.rush/skills/` (全局)
+- **Agent Skills**: `~/.rush/skills/`
+
+### 本地配置 (.rush/)
+- **配置文件**: `.rush/config.json` (优先于全局配置)
+- **MCP Servers**: `.rush/mcp_servers.json` (与全局合并)
+- **配置说明**: `.rush/README.md`
+- **Agent Skills**: `.rush/skills/`
+
+**注意**: 
+- 本地配置文件可以提交到 Git,方便团队共享和学习
+- 请自行管理敏感信息(如 API Key)的安全性
+- 向量数据库和历史记录不会被提交
 
 ## 技术栈
 
@@ -602,6 +793,7 @@ class MyTool(Tool):
 - **prompt_toolkit** >= 3.0.0 - 命令行交互界面
 - **chromadb** >= 0.4.0 - 向量数据库
 - **DeepSeek API** - 大语言模型服务
+- **Node.js/npm** - MCP servers 运行时 (可选)
 
 ### 支持的 LLM 提供商
 
