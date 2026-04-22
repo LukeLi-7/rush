@@ -69,18 +69,12 @@ class ReActAgent:
         self.base_system_prompt = self._build_system_prompt()
 
     def _create_provider(self, config: Dict) -> LLMProvider:
-        """创建 LLM Provider
-        
-        Args:
-            config: 配置字典
-            
-        Returns:
-            LLMProvider: Provider 实例
-        """
+        """创建 LLM Provider"""
         return OpenAICompatibleProvider(
             api_key=config["api_key"],
             base_url=config.get("base_url", "https://api.deepseek.com/v1"),
-            model=config.get("model", "deepseek-chat")
+            model=config.get("model", "deepseek-chat"),
+            timeout=config.get("timeout", 30)
         )
 
     def _init_vector_db(self, config: Dict) -> Optional[VectorDBProvider]:
@@ -204,11 +198,16 @@ class ReActAgent:
         """初始化并连接 MCP servers,注册所有 MCP tools"""
         try:
             import asyncio
+            import warnings
 
             # 连接所有启用的 MCP servers
             loop = asyncio.new_event_loop()
-            connected_count = loop.run_until_complete(self.mcp_manager.connect_all())
-            loop.close()
+            
+            # 抑制事件循环关闭警告
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", ResourceWarning)
+                connected_count = loop.run_until_complete(self.mcp_manager.connect_all())
+                loop.close()
 
             if connected_count > 0:
                 print(f"✓ 已连接 {connected_count} 个 MCP servers")
@@ -318,14 +317,10 @@ class ReActAgent:
             print(f"[迭代 {iteration}/{self.max_iterations}]")
 
             # 调用 LLM (带工具)
-            try:
-                response = self.provider.chat_with_tools(
-                    messages=messages,
-                    tools=self._get_tool_schemas()
-                )
-
-            except Exception as e:
-                return f"API 调用错误: {str(e)}"
+            response = self.provider.chat_with_tools(
+                messages=messages,
+                tools=self._get_tool_schemas()
+            )
 
             # 情况 1: 有工具调用
             if response.has_tool_calls:

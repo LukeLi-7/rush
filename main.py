@@ -77,6 +77,11 @@ def handle_command(command: str, agent: ReActAgent) -> bool:
 
 def main():
     """主函数 - REPL 交互界面"""
+    import warnings
+    
+    # 抑制 ResourceWarning
+    warnings.filterwarnings("ignore", category=ResourceWarning)
+    
     print_welcome()
     
     # 加载配置
@@ -102,16 +107,22 @@ def main():
     # 中断标志 (用于在 agent 执行时检测 Ctrl+C)
     import threading
     interrupt_event = threading.Event()
+    agent_interrupted = False
     
     def signal_handler(sig, frame):
-        """处理 Ctrl+C 信号 - 直接抛出异常中断执行"""
-        raise KeyboardInterrupt("\n\n⚠️  操作已中断,可以输入新问题")
+        """处理 Ctrl+C 信号 - 只在 agent 执行时中断"""
+        nonlocal agent_interrupted
+        if not agent_interrupted:  # 防止重复触发
+            agent_interrupted = True
+            raise KeyboardInterrupt("\n\n⚠️  操作已中断,可以输入新问题")
     
     # 注册信号处理器
     signal.signal(signal.SIGINT, signal_handler)
     
     # REPL 循环
     while True:
+        agent_interrupted = False  # 重置中断标志
+        
         try:
             user_input = prompt(
                 "[Rush] > ",
@@ -127,16 +138,18 @@ def main():
                     break
                 continue  # 命令处理后跳过 Agent 执行
             
-            # 重置中断标志
-            interrupt_event.clear()
-            
             # 运行 ReAct Agent
             result = agent.run(user_input)
             
         except KeyboardInterrupt:
-            # prompt_toolkit 的 KeyboardInterrupt (输入阶段)
+            # prompt_toolkit 的 KeyboardInterrupt (输入阶段) 或 agent 执行时的中断
             print("\n\n⚠️  操作已中断,可以输入新问题")
             agent.clear_history()
+            continue
+        except TimeoutError as e:
+            # API 超时
+            print(f"\n\n⚠️  {str(e)}")
+            print("可以输入新问题继续对话\n")
             continue
         except EOFError:
             print("\n检测到输入结束,继续等待输入...")
@@ -145,6 +158,8 @@ def main():
             print(f"\n错误: {str(e)}")
             import traceback
             traceback.print_exc()
+            print("\n可以输入新问题继续对话\n")
+            continue
 
 
 if __name__ == "__main__":

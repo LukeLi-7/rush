@@ -2,6 +2,7 @@
   "api_key": "sk-*******************",
   "base_url": "https://api.deepseek.com",
   "model": "deepseek-chat",
+  "timeout": 30,
   "vector_db": {
     "active": "chromadb",
     "providers": {
