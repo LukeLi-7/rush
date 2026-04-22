@@ -12,6 +12,7 @@ from src.llm.providers.base import LLMProvider
 from src.llm.providers.openai_compatible import OpenAICompatibleProvider
 from src.vector_db.providers.base import VectorDBProvider
 from src.vector_db.providers.chromadb import ChromaDBProvider
+from src.vector_db.providers.milvus import MilvusProvider
 from src.tools.base import Tool
 from src.tools.file_read import FileReadTool
 from src.tools.file_write import FileWriteTool
@@ -83,32 +84,46 @@ class ReActAgent:
         )
 
     def _init_vector_db(self, config: Dict) -> Optional[VectorDBProvider]:
-        """初始化向量数据库
-        
-        Args:
-            config: 向量数据库配置
-            
-        Returns:
-            Optional[VectorDBProvider]: 向量数据库实例,如果未配置则返回 None
-        """
+        """初始化向量数据库"""
         if not config:
             return None
 
-        provider_name = config.get("provider", "chromadb")
-        persist_directory = config.get("persist_directory", "~/.rush/chromadb")
+        # 获取激活的提供者配置
+        if "providers" in config:
+            active = config.get("active", "chromadb")
+            provider_config = config["providers"].get(active)
+        else:
+            # 兼容旧格式
+            active = config.get("provider", "chromadb")
+            provider_config = config
+
+        if not provider_config:
+            print(f"警告: 提供者 '{active}' 配置不存在")
+            return None
 
         try:
-            if provider_name == "chromadb":
+            if active == "chromadb":
                 import os
                 db = ChromaDBProvider(
-                    persist_directory=os.path.expanduser(persist_directory)
+                    persist_directory=os.path.expanduser(
+                        provider_config.get("persist_directory", "~/.rush/chromadb")
+                    )
                 )
-                db.initialize()
-                print(f"✓ 向量数据库初始化成功: {db.get_provider_name()}")
-                return db
+            elif active == "milvus":
+                db = MilvusProvider(
+                    host=provider_config.get("host", "localhost"),
+                    port=provider_config.get("port", "19530"),
+                    collection_name=provider_config.get("collection_name", "rush_knowledge"),
+                    embedding_dim=provider_config.get("embedding_dim", 384)
+                )
             else:
-                print(f"警告: 不支持的向量数据库类型 '{provider_name}'")
+                print(f"警告: 不支持的向量数据库类型 '{active}'")
                 return None
+
+            db.initialize()
+            print(f"✓ 向量数据库初始化成功: {db.get_provider_name()}")
+            return db
+
         except Exception as e:
             import traceback
             print(f"警告: 向量数据库初始化失败: {str(e)}")

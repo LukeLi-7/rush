@@ -1,9 +1,21 @@
 {
-    "api_key": "sk-*******************",
-    "base_url": "https://api.deepseek.com",
-    "model": "deepseek-chat",
-    "vector_db": {
+  "api_key": "sk-*******************",
+  "base_url": "https://api.deepseek.com",
+  "model": "deepseek-chat",
+  "vector_db": {
+    "active": "chromadb",
+    "providers": {
+      "chromadb": {
         "provider": "chromadb",
         "persist_directory": "~/.rush/chromadb"
+      },
+      "milvus": {
+        "provider": "milvus",
+        "host": "localhost",
+        "port": "19530",
+        "collection_name": "rush_knowledge",
+        "embedding_dim": 384
+      }
     }
+  }
 }
