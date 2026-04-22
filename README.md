@@ -9,6 +9,10 @@
 - ✅ **Agent Skills** - 通过 Markdown 文件定义 Agent 行为准则和专业能力
 - ✅ **MCP 集成** - 支持 Model Context Protocol,动态加载外部工具和服务
 - ✅ **Provider 抽象层** - 支持多种 LLM 提供商(DeepSeek/OpenAI/Qwen),易于扩展
+- ✅ **多向量数据库支持** - 支持 ChromaDB 和 Milvus,可配置切换
+- ✅ **API 超时控制** - 可配置的请求超时,防止长时间卡住
+- ✅ **实时进度显示** - LLM 调用时显示倒计时,清晰了解剩余时间
+- ✅ **优雅中断处理** - Ctrl+C 立即中断并返回输入框,无需按两次
 - ✅ **ReAct 框架** - Thought → Action → Observation 循环机制
 - ✅ **模块化设计** - 配置、Agent、工具完全分离
 - ✅ **REPL 交互界面** - 支持历史命令导航
