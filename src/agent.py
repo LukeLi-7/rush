@@ -4,6 +4,7 @@
 """
 
 import json
+import threading
 from typing import Dict, List, Optional
 
 from src.config import read_config
@@ -254,6 +255,24 @@ class ReActAgent:
             return tool.execute(**arguments)
         except Exception as e:
             return f"工具执行错误: {str(e)}"
+
+    def set_interrupt_event(self, event: threading.Event):
+        """设置中断事件对象
+        
+        Args:
+            event: threading.Event 对象,用于检测中断信号
+        """
+        self.interrupt_event = event
+    
+    def _check_interrupted(self) -> bool:
+        """检查是否被中断
+        
+        Returns:
+            bool: 是否被中断
+        """
+        if self.interrupt_event and self.interrupt_event.is_set():
+            return True
+        return False
 
     def run(self, query: str) -> str:
         """运行 ReAct 循环 (Function Calling 模式)

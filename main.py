@@ -2,6 +2,7 @@
 
 import os
 import sys
+import signal
 
 from prompt_toolkit import prompt
 from prompt_toolkit.history import FileHistory
@@ -98,6 +99,17 @@ def main():
     history_path = os.path.expanduser("~/.rush/history.txt")
     os.makedirs(os.path.dirname(history_path), exist_ok=True)
     
+    # 中断标志 (用于在 agent 执行时检测 Ctrl+C)
+    import threading
+    interrupt_event = threading.Event()
+    
+    def signal_handler(sig, frame):
+        """处理 Ctrl+C 信号 - 直接抛出异常中断执行"""
+        raise KeyboardInterrupt("\n\n⚠️  操作已中断,可以输入新问题")
+    
+    # 注册信号处理器
+    signal.signal(signal.SIGINT, signal_handler)
+    
     # REPL 循环
     while True:
         try:
@@ -115,12 +127,17 @@ def main():
                     break
                 continue  # 命令处理后跳过 Agent 执行
             
+            # 重置中断标志
+            interrupt_event.clear()
+            
             # 运行 ReAct Agent
             result = agent.run(user_input)
             
         except KeyboardInterrupt:
-            print("\n\n再见!")
-            break
+            # prompt_toolkit 的 KeyboardInterrupt (输入阶段)
+            print("\n\n⚠️  操作已中断,可以输入新问题")
+            agent.clear_history()
+            continue
         except EOFError:
             print("\n检测到输入结束,继续等待输入...")
             continue
