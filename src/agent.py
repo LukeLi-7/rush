@@ -125,8 +125,8 @@ class ReActAgent:
             return None
 
     def _build_system_prompt(self) -> str:
-        """构建基础系统提示词(包含 skills)
-        
+        """构建基础系统提示词
+
         Returns:
             str: 系统提示词
         """
@@ -140,22 +140,16 @@ class ReActAgent:
 - command_exec: 执行系统命令
 - knowledge_search: 从知识库中搜索相关信息(当用户询问知识性问题时使用)
 - knowledge_add: 向知识库添加新知识(当用户提供新信息时使用)
-- manage_skills: 管理 Agent Skills (list, refresh, enable, disable)
+- manage_skills: 管理 Agent Skills (list, refresh, enable, disable, 执行 skill)
 
 使用建议:
 1. 如果用户询问需要专业知识的问题,先使用 knowledge_search 检索相关知识
 2. 如果用户提供了新的知识或信息,可以使用 knowledge_add 保存到知识库
 3. 如果需要查看或管理 skills,使用 manage_skills
-4. 根据需要使用其他工具完成任务
+4. 如果用户需要执行特定任务,检查 manage_skills 工具描述中是否有合适的 skill 可以帮助完成任务
+5. 根据需要使用其他工具完成任务
 
 请根据问题选择合适的工具,不要过度调用工具。"""
-
-        # 添加已启用的 skills
-        if self.skill_manager:
-            skills_content = self.skill_manager.get_enabled_skills_text()
-            if skills_content:
-                base_prompt += "\n\n=== Agent Skills ==="
-                base_prompt += skills_content
 
         return base_prompt
 
@@ -313,6 +307,11 @@ class ReActAgent:
 
         iteration = 0
         while iteration < self.max_iterations:
+            # 检查是否被中断
+            if self._check_interrupted():
+                print("\n⚠️  操作已中断")
+                return "操作已中断"
+
             iteration += 1
             print(f"[迭代 {iteration}/{self.max_iterations}]")
 

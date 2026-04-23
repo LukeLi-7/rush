@@ -110,39 +110,45 @@ def main():
     agent_interrupted = False
     
     def signal_handler(sig, frame):
-        """处理 Ctrl+C 信号 - 只在 agent 执行时中断"""
+        """处理 Ctrl+C 信号 - 立即中断"""
         nonlocal agent_interrupted
         if not agent_interrupted:  # 防止重复触发
             agent_interrupted = True
-            raise KeyboardInterrupt("\n\n⚠️  操作已中断,可以输入新问题")
-    
+            print("\n\n⚠️  操作已中断,可以输入新问题")
+            # 设置中断事件，让 agent 能够检测到
+            interrupt_event.set()
+
     # 注册信号处理器
     signal.signal(signal.SIGINT, signal_handler)
-    
+
+    # 设置 agent 的中断事件
+    agent.set_interrupt_event(interrupt_event)
+
     # REPL 循环
     while True:
         agent_interrupted = False  # 重置中断标志
-        
+        interrupt_event.clear()  # 清除中断事件
+
         try:
             user_input = prompt(
                 "[Rush] > ",
                 history=FileHistory(history_path)
             ).strip()
-            
+
             if not user_input:
                 continue
-            
+
             # 处理内置命令
             if user_input.startswith('/'):
                 if not handle_command(user_input, agent):
                     break
                 continue  # 命令处理后跳过 Agent 执行
-            
+
             # 运行 ReAct Agent
             result = agent.run(user_input)
-            
+
         except KeyboardInterrupt:
-            # prompt_toolkit 的 KeyboardInterrupt (输入阶段) 或 agent 执行时的中断
+            # prompt_toolkit 的 KeyboardInterrupt (输入阶段)
             print("\n\n⚠️  操作已中断,可以输入新问题")
             agent.clear_history()
             continue
