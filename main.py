@@ -139,7 +139,7 @@ def main():
                 continue  # 命令处理后跳过 Agent 执行
             
             # 运行 ReAct Agent
-            result = agent.run(user_input)
+            result = agent.run(user_input, use_streaming=True)
             
         except KeyboardInterrupt:
             # prompt_toolkit 的 KeyboardInterrupt (输入阶段) 或 agent 执行时的中断

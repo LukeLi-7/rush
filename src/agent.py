@@ -288,11 +288,12 @@ class ReActAgent:
             return True
         return False
 
-    def run(self, query: str) -> str:
+    def run(self, query: str, use_streaming: bool = True) -> str:
         """运行 ReAct 循环 (Function Calling 模式)
         
         Args:
             query: 用户问题
+            use_streaming: 是否使用流式输出，默认为True
             
         Returns:
             str: 最终答案
@@ -317,10 +318,22 @@ class ReActAgent:
             print(f"[迭代 {iteration}/{self.max_iterations}]")
 
             # 调用 LLM (带工具)
-            response = self.provider.chat_with_tools(
-                messages=messages,
-                tools=self._get_tool_schemas()
-            )
+            if use_streaming:
+                # 定义回调函数用于流式输出
+                def stream_callback(chunk):
+                    print(chunk, end='', flush=True)
+                
+                response = self.provider.chat_with_tools_stream(
+                    messages=messages,
+                    tools=self._get_tool_schemas(),
+                    callback=stream_callback
+                )
+                print()  # 换行
+            else:
+                response = self.provider.chat_with_tools(
+                    messages=messages,
+                    tools=self._get_tool_schemas()
+                )
 
             # 情况 1: 有工具调用
             if response.has_tool_calls:

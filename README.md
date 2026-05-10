@@ -2,21 +2,20 @@
 
 基于 ReAct(Reasoning + Acting)框架的命令行 AI Agent,使用 Function Calling 实现智能工具调用。
 
-## 功能特性
+## ✨ 核心特性
 
-- ✅ **Function Calling** - 使用结构化 API 进行工具调用,不占用上下文窗口
-- ✅ **RAG 知识检索** - 基于向量数据库的知识检索与增强生成
-- ✅ **Agent Skills** - 通过 Markdown 文件定义 Agent 行为准则和专业能力
-- ✅ **MCP 集成** - 支持 Model Context Protocol,动态加载外部工具和服务
-- ✅ **Provider 抽象层** - 支持多种 LLM 提供商(DeepSeek/OpenAI/Qwen),易于扩展
-- ✅ **多向量数据库支持** - 支持 ChromaDB 和 Milvus,可配置切换
-- ✅ **API 超时控制** - 可配置的请求超时,防止长时间卡住
-- ✅ **实时进度显示** - LLM 调用时显示倒计时,清晰了解剩余时间
-- ✅ **优雅中断处理** - Ctrl+C 立即中断并返回输入框,无需按两次
-- ✅ **ReAct 框架** - Thought → Action → Observation 循环机制
-- ✅ **模块化设计** - 配置、Agent、工具完全分离
-- ✅ **REPL 交互界面** - 支持历史命令导航
-- ✅ **自动配置管理** - 首次运行自动创建配置文件
+- 🎯 **Function Calling** - 结构化 API 工具调用,不占用上下文窗口
+- 🧠 **RAG 知识检索** - 基于向量数据库的知识检索与增强生成
+- 📚 **Agent Skills** - Markdown 定义的行为准则和专业能力
+- 🔌 **MCP 集成** - Model Context Protocol,动态加载外部服务
+- 🔄 **多 LLM 支持** - DeepSeek/OpenAI/Qwen,Provider 抽象层易扩展
+- 💾 **多向量数据库** - ChromaDB/Milvus,配置化切换
+- ⏱️ **超时控制** - 可配置 API 超时,防止长时间卡住
+- 📊 **实时进度** - LLM 调用倒计时,清晰了解剩余时间
+- 🌊 **流式输出** - SSE 模式实时显示 LLM 响应,提升交互体验
+- 🛑 **优雅中断** - Ctrl+C 立即中断并返回输入框
+- 🎨 **模块化设计** - 配置、Agent、工具完全分离
+- 💻 **REPL 交互** - 支持历史命令导航
 
 ## 项目结构
 
@@ -99,9 +98,30 @@ pip install -r requirements.txt
 
 ## RAG (检索增强生成) 使用说明
 
-Rush 集成了基于 ChromaDB 的向量数据库,支持 RAG 功能:
+Rush 集成了向量数据库,支持 RAG 功能:
+
+### 支持的向量数据库
+
+- **ChromaDB** - 轻量级本地向量数据库,开箱即用
+- **Milvus** - 高性能分布式向量数据库,适合生产环境
+
+### 切换向量数据库
+
+修改 `config.json` 中的 `active` 字段:
+
+```json
+{
+  "vector_db": {
+    "active": "chromadb"  // 或 "milvus"
+  }
+}
+```
 
 ### 工作原理
+
+1. **知识存储** - 使用 `knowledge_add` 工具将知识保存到向量数据库
+2. **语义搜索** - 使用 `knowledge_search` 工具进行相似度检索
+3. **增强回答** - Agent 结合检索结果生成更准确的答案
 
 1. **知识存储** - 使用 `knowledge_add` 工具将知识保存到向量数据库
 2. **语义搜索** - 使用 `knowledge_search` 工具进行相似度检索
@@ -126,8 +146,153 @@ knowledge_search('Python 是什么?')
 
 - ✅ **轻量级嵌入** - 无需安装 torch/sentence-transformers (节省 ~2GB)
 - ✅ **本地持久化** - 数据保存在 `~/.rush/chromadb`,重启不丢失
-- ✅ **可扩展架构** - 通过 Provider 抽象层支持切换其他向量数据库
+- ✅ **可扩展架构** - Provider 抽象层支持切换其他向量数据库
 - ✅ **语义搜索** - 基于词频哈希的向量相似度计算
+- ✅ **多提供者支持** - 配置多个向量数据库,一键切换
+
+## ⏱️ API 超时与进度显示
+
+### 超时配置
+
+在 `config.json` 中设置 `timeout` 字段(单位:秒):
+
+```json
+{
+  "timeout": 30
+}
+```
+
+**建议值:**
+- 开发环境: 10-15 秒
+- 生产环境: 30-60 秒
+
+### 实时倒计时
+
+LLM 调用时会显示实时倒计时:
+
+```
+正在调用 LLM... 剩余 30s
+正在调用 LLM... 剩余 29s
+...
+✓ LLM 响应成功
+```
+
+**超时处理:**
+- 超时后自动中断,显示错误信息
+- 立即返回输入提示符,可继续对话
+- 不会卡住或需要强制退出
+
+### 🛑 优雅中断
+
+**Ctrl+C 中断:**
+- 输入阶段: prompt_toolkit 捕获,显示中断提示
+- Agent 执行时: 信号处理器触发,立即中断
+- 一次按键即可,不需要按两次
+- 清除历史后可重新提问
+
+```
+[Rush] > 问一个问题
+[迭代 1/5]
+正在调用 LLM... 剩余 8s
+^C
+
+⚠️  操作已中断,可以输入新问题
+对话历史已清除
+[Rush] > 
+```
+
+## 🌊 流式输出 (SSE 模式)
+
+Rush 支持流式输出功能,让 LLM 响应实时显示在控制台上,提供更好的交互体验。
+
+### 工作原理
+
+流式输出使用 Server-Sent Events (SSE) 技术:
+- **实时显示** - LLM 生成的文本逐字实时显示,无需等待全部生成完成
+- **流畅体验** - 用户可以看到 AI 思考的过程,减少等待焦虑
+- **保持兼容** - 保留了原有的非流式模式,可通过参数切换
+
+### 使用示例
+
+**默认启用流式输出:**
+```python
+# Agent 默认使用流式输出
+result = agent.run("你好,请介绍一下自己")
+```
+
+**手动控制流式输出:**
+```python
+# 启用流式输出 (默认)
+result = agent.run("问题", use_streaming=True)
+
+# 禁用流式输出,使用传统模式
+result = agent.run("问题", use_streaming=False)
+```
+
+### 效果对比
+
+**流式输出 (推荐):**
+```
+[Rush] > 你好
+
+[迭代 1/5]
+✓ LLM 响应成功              
+你好!很高兴认识你!😊
+
+我是你的 **智能助手**,具备以下能力和特点：
+...
+(文本逐字实时显示)
+```
+
+**非流式输出:**
+```
+[Rush] > 你好
+
+[迭代 1/5]
+正在调用 LLM... 剩余 30s
+正在调用 LLM... 剩余 29s
+...
+✓ LLM 响应成功              
+
+============================================================
+最终答案: 你好!很高兴认识你!...
+============================================================
+```
+
+### 技术实现
+
+流式输出通过以下方式实现:
+
+1. **Provider 层** - `chat_stream` 和 `chat_with_tools_stream` 方法
+2. **回调机制** - 每个文本片段通过回调函数实时输出
+3. **工具调用支持** - 流式模式下同样支持 Function Calling
+
+```python
+# Provider 接口
+def chat_stream(
+    self,
+    messages: List[Dict[str, str]],
+    callback=None  # 回调函数处理每个片段
+) -> str:
+    """流式聊天"""
+    pass
+
+def chat_with_tools_stream(
+    self,
+    messages: List[Dict[str, Any]],
+    tools: List[Dict[str, Any]],
+    callback=None
+) -> ChatResponse:
+    """带工具调用的流式聊天"""
+    pass
+```
+
+### 优势
+
+- ✅ **更好的用户体验** - 实时看到 AI 响应过程
+- ✅ **减少等待时间感** - 不需要等待完整响应
+- ✅ **适合长文本** - 长回答时优势更明显
+- ✅ **向后兼容** - 可随时切换回非流式模式
 
 ## Agent Skills 使用说明
 
@@ -651,7 +816,7 @@ class MyProvider(LLMProvider):
 
 ## 示例对话
 
-### RAG 知识检索
+### RAG 知识检索 (流式输出)
 
 ```
 [Rush] > Python 是什么?
@@ -663,6 +828,7 @@ class MyProvider(LLMProvider):
 使用 Provider: OpenAI-Compatible (deepseek-chat)
 
 [迭代 1/5]
+✓ LLM 响应成功              
 调用工具: knowledge_search({'query': 'Python 编程语言'})
 工具结果: [1] Python 是一种高级编程语言,由 Guido van Rossum 于 1991 年首次发布。
    来源: 维基百科
@@ -671,13 +837,16 @@ class MyProvider(LLMProvider):
    来源: 官方文档
 
 [迭代 2/5]
+✓ LLM 响应成功              
+Python 是一种高级编程语言,由 Guido van Rossum 于 1991 年首次发布。它支持多种编程范式...
+(文本实时流式显示)
 
 ============================================================
 最终答案: Python 是一种高级编程语言,由 Guido van Rossum 于 1991 年首次发布。它支持多种编程范式...
 ============================================================
 ```
 
-### Function Calling 模式
+### Function Calling 模式 (流式输出)
 
 ```
 [Rush] > 读取 README.md 文件
@@ -689,12 +858,16 @@ class MyProvider(LLMProvider):
 使用 Provider: OpenAI-Compatible (deepseek-chat)
 
 [迭代 1/5]
+✓ LLM 响应成功              
 调用工具: file_read({'path': 'README.md'})
 工具结果: 文件内容:
 # Rush - ReAct Agent CLI
 基于 ReAct(Reasoning + Acting)框架的命令行 AI Agent...
 
 [迭代 2/5]
+✓ LLM 响应成功              
+我已经读取了 README.md 文件,这是一个基于 ReAct 框架的 AI Agent 项目...
+(文本实时流式显示)
 
 ============================================================
 最终答案: 我已经读取了 README.md 文件,这是一个基于 ReAct 框架的 AI Agent 项目...
@@ -790,12 +963,15 @@ class MyTool(Tool):
 - 请自行管理敏感信息(如 API Key)的安全性
 - 向量数据库和历史记录不会被提交
 
-## 技术栈
+## 🛠️ 技术栈
+
+### 核心依赖
 
 - **Python** 3.x
 - **openai** >= 1.0.0 - OpenAI 兼容 API 客户端
 - **prompt_toolkit** >= 3.0.0 - 命令行交互界面
-- **chromadb** >= 0.4.0 - 向量数据库
+- **chromadb** >= 0.4.0 - ChromaDB 向量数据库
+- **pymilvus** >= 2.3.0 - Milvus 向量数据库
 - **DeepSeek API** - 大语言模型服务
 - **Node.js/npm** - MCP servers 运行时 (可选)
 
@@ -806,6 +982,11 @@ class MyTool(Tool):
 - ✅ **Qwen** - 通义千问 (兼容模式)
 - 🔜 **Claude** - 待实现
 - 🔜 **Gemini** - 待实现
+
+### 支持的向量数据库
+
+- ✅ **ChromaDB** - 轻量级本地向量数据库,开箱即用
+- ✅ **Milvus** - 高性能分布式向量数据库,适合生产环境
 
 ## 许可证
 

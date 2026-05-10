@@ -61,6 +61,42 @@ class LLMProvider(ABC):
         pass
     
     @abstractmethod
+    def chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        callback=None
+    ) -> str:
+        """流式聊天
+        
+        Args:
+            messages: 消息历史列表
+            callback: 回调函数，用于处理每个流式片段
+            
+        Returns:
+            str: AI 回复内容
+        """
+        pass
+    
+    @abstractmethod
+    def chat_with_tools_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        callback=None
+    ) -> ChatResponse:
+        """带工具调用的流式聊天
+        
+        Args:
+            messages: 消息历史列表
+            tools: 工具定义列表
+            callback: 回调函数，用于处理每个流式片段
+            
+        Returns:
+            ChatResponse: 包含文本或工具调用的响应
+        """
+        pass
+    
+    @abstractmethod
     def get_provider_name(self) -> str:
         """获取 Provider 名称
         
