@@ -250,6 +250,77 @@ class ReActAgent:
         schemas = [tool.get_schema() for tool in self.tools.values()]
         return schemas
 
+    def _validate_tool_arguments(self, tool: Tool, arguments: Dict) -> Dict:
+        """验证工具参数
+        
+        Args:
+            tool: 工具对象
+            arguments: 参数字典
+            
+        Returns:
+            Dict: 验证结果 {"valid": bool, "message": str}
+        """
+        try:
+            schema = tool.get_schema()
+            params_schema = schema.get("function", {}).get("parameters", {})
+            
+            if not params_schema:
+                # 没有参数schema，跳过验证
+                return {"valid": True, "message": ""}
+            
+            required_params = params_schema.get("required", [])
+            properties = params_schema.get("properties", {})
+            
+            # 检查必填参数
+            missing_params = [p for p in required_params if p not in arguments]
+            if missing_params:
+                return {
+                    "valid": False,
+                    "message": f"缺少必填参数: {', '.join(missing_params)}"
+                }
+            
+            # 检查参数类型
+            for param_name, param_value in arguments.items():
+                if param_name in properties:
+                    expected_type = properties[param_name].get("type")
+                    if expected_type and not self._check_type(param_value, expected_type):
+                        return {
+                            "valid": False,
+                            "message": f"参数 '{param_name}' 类型错误，期望 {expected_type}，实际 {type(param_value).__name__}"
+                        }
+            
+            return {"valid": True, "message": ""}
+            
+        except Exception as e:
+            # 验证过程出错，不阻断执行
+            return {"valid": True, "message": f"验证警告: {str(e)}"}
+    
+    def _check_type(self, value, expected_type: str) -> bool:
+        """检查值是否符合预期类型
+        
+        Args:
+            value: 要检查的值
+            expected_type: 期望的类型 (string, number, boolean, array, object)
+            
+        Returns:
+            bool: 是否符合类型
+        """
+        type_map = {
+            "string": str,
+            "number": (int, float),
+            "integer": int,
+            "boolean": bool,
+            "array": (list, tuple),
+            "object": dict
+        }
+        
+        expected_python_type = type_map.get(expected_type)
+        if expected_python_type:
+            return isinstance(value, expected_python_type)
+        
+        # 未知类型，默认通过
+        return True
+    
     def _execute_function(self, name: str, arguments: Dict) -> str:
         """执行函数调用
         
@@ -258,17 +329,77 @@ class ReActAgent:
             arguments: 函数字典
             
         Returns:
-            str: 执行结果
+            str: 执行结果（JSON格式）
         """
+        import time
+        
+        # 检查工具是否存在
         if name not in self.tools:
-            return f"错误: 未知工具 '{name}'"
+            return json.dumps({
+                "success": False,
+                "error": f"未知工具: {name}",
+                "available_tools": list(self.tools.keys())
+            }, ensure_ascii=False)
 
         tool = self.tools[name]
-        try:
-            # 将参数字典转换为关键字参数
-            return tool.execute(**arguments)
-        except Exception as e:
-            return f"工具执行错误: {str(e)}"
+        
+        # 验证参数
+        validation_result = self._validate_tool_arguments(tool, arguments)
+        if not validation_result["valid"]:
+            return json.dumps({
+                "success": False,
+                "error": validation_result["message"],
+                "tool": name,
+                "expected_schema": tool.get_schema().get("function", {}).get("parameters", {})
+            }, ensure_ascii=False)
+        
+        # 执行工具（带重试）
+        max_retries = 2
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                # 将参数字典转换为关键字参数
+                result = tool.execute(**arguments)
+                
+                # 成功执行，返回结果
+                return json.dumps({
+                    "success": True,
+                    "result": result,
+                    "attempt": attempt + 1
+                }, ensure_ascii=False)
+                
+            except TypeError as e:
+                # 参数类型错误，不重试
+                error_msg = str(e)
+                if "got an unexpected keyword argument" in error_msg or "missing" in error_msg:
+                    return json.dumps({
+                        "success": False,
+                        "error": f"参数错误: {error_msg}",
+                        "tool": name,
+                        "provided_args": list(arguments.keys())
+                    }, ensure_ascii=False)
+                last_error = e
+                
+            except Exception as e:
+                last_error = e
+                
+                # 如果不是最后一次尝试，等待后重试
+                if attempt < max_retries - 1:
+                    wait_time = 1 * (attempt + 1)  # 指数退避：1s, 2s
+                    print(f"  ⚠️  工具执行失败，{wait_time}秒后重试 ({attempt + 1}/{max_retries})...")
+                    time.sleep(wait_time)
+                else:
+                    # 所有重试都失败
+                    break
+        
+        # 所有重试都失败，返回错误信息
+        return json.dumps({
+            "success": False,
+            "error": f"工具执行失败: {str(last_error)}",
+            "tool": name,
+            "attempts": max_retries
+        }, ensure_ascii=False)
 
     def set_interrupt_event(self, event: threading.Event):
         """设置中断事件对象
@@ -354,7 +485,25 @@ class ReActAgent:
                         tool_call.name,
                         tool_call.arguments
                     )
-                    print(f"工具结果: {result}\n")
+                    
+                    # 解析JSON格式的结果
+                    try:
+                        result_data = json.loads(result)
+                        if result_data.get("success"):
+                            # 成功，提取实际结果
+                            actual_result = result_data.get("result", "")
+                            attempt_info = f" (第{result_data.get('attempt', 1)}次尝试)" if result_data.get('attempt', 1) > 1 else ""
+                            print(f"工具结果{attempt_info}: {actual_result}\n")
+                            result_for_llm = actual_result
+                        else:
+                            # 失败，返回错误信息
+                            error_msg = result_data.get("error", "未知错误")
+                            print(f"✗ 工具执行失败: {error_msg}\n")
+                            result_for_llm = result  # 将完整JSON返回给LLM，让它理解错误
+                    except json.JSONDecodeError:
+                        # 如果不是JSON格式，直接使用原始结果（向后兼容）
+                        print(f"工具结果: {result}\n")
+                        result_for_llm = result
 
                     # 添加工具调用和结果到消息历史
                     messages.append({
@@ -374,7 +523,7 @@ class ReActAgent:
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
-                        "content": result
+                        "content": result_for_llm
                     })
 
             # 情况 2: 没有工具调用,直接返回文本
