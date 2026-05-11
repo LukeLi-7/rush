@@ -23,6 +23,50 @@ class ChatResponse:
     def has_tool_calls(self) -> bool:
         """是否有工具调用"""
         return self.tool_calls is not None and len(self.tool_calls) > 0
+    
+    def to_dict(self) -> dict:
+        """转换为字典（用于缓存）
+        
+        Returns:
+            dict: 序列化后的数据
+        """
+        return {
+            'content': self.content,
+            'tool_calls': [
+                {
+                    'id': tc.id,
+                    'name': tc.name,
+                    'arguments': tc.arguments
+                }
+                for tc in self.tool_calls
+            ] if self.tool_calls else None
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'ChatResponse':
+        """从字典创建（用于缓存）
+        
+        Args:
+            data: 序列化数据
+            
+        Returns:
+            ChatResponse: 反序列化后的对象
+        """
+        tool_calls = None
+        if data.get('tool_calls'):
+            tool_calls = [
+                ToolCall(
+                    id=tc['id'],
+                    name=tc['name'],
+                    arguments=tc['arguments']
+                )
+                for tc in data['tool_calls']
+            ]
+        
+        return cls(
+            content=data.get('content'),
+            tool_calls=tool_calls
+        )
 
 
 class LLMProvider(ABC):

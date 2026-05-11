@@ -70,6 +70,10 @@ class ReActAgent:
         
         # 中断事件（可选，由 main.py 设置）
         self.interrupt_event = None
+        
+        # 错误处理器
+        from src.error_handler import ErrorHandler
+        self.error_handler = ErrorHandler()
 
         # 构建系统提示词(包含 skills)
         self.base_system_prompt = self._build_system_prompt()
@@ -80,7 +84,10 @@ class ReActAgent:
             api_key=config["api_key"],
             base_url=config.get("base_url", "https://api.deepseek.com/v1"),
             model=config.get("model", "deepseek-chat"),
-            timeout=config.get("timeout", 30)
+            timeout=config.get("timeout", 30),
+            enable_retry=True,  # 启用重试
+            enable_cache=False,  # 默认不启用缓存，可通过配置开启
+            cache_ttl=3600  # 缓存1小时
         )
 
     def _init_vector_db(self, config: Dict) -> Optional[VectorDBProvider]:
@@ -480,17 +487,33 @@ class ReActAgent:
                     thinking_content.append(chunk)
                     print(chunk, end='', flush=True)
                 
-                response = self.provider.chat_with_tools_stream(
-                    messages=messages,
-                    tools=self._get_tool_schemas(),
-                    callback=stream_callback
-                )
+                try:
+                    response = self.provider.chat_with_tools_stream(
+                        messages=messages,
+                        tools=self._get_tool_schemas(),
+                        callback=stream_callback
+                    )
+                except Exception as e:
+                    self.error_handler.log_error(e, {
+                        'query': query,
+                        'iteration': iteration,
+                        'phase': 'LLM streaming call'
+                    })
+                    raise
                 print()  # 换行
             else:
-                response = self.provider.chat_with_tools(
-                    messages=messages,
-                    tools=self._get_tool_schemas()
-                )
+                try:
+                    response = self.provider.chat_with_tools(
+                        messages=messages,
+                        tools=self._get_tool_schemas()
+                    )
+                except Exception as e:
+                    self.error_handler.log_error(e, {
+                        'query': query,
+                        'iteration': iteration,
+                        'phase': 'LLM call'
+                    })
+                    raise
 
             # 情况 1: 有工具调用
             if response.has_tool_calls:

@@ -4,11 +4,14 @@
 """
 
 import json
-from typing import List, Dict, Any
+import time
+import threading
+from typing import List, Dict, Any, Optional
 
 from openai import OpenAI
 
 from src.llm.providers.base import LLMProvider, ChatResponse, ToolCall
+from src.error_handler import RetryConfig, CircuitBreaker, ResponseCache, retry_with_backoff
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -17,7 +20,16 @@ class OpenAICompatibleProvider(LLMProvider):
     适用于所有兼容 OpenAI API 格式的服务商
     """
     
-    def __init__(self, api_key: str, base_url: str, model: str, timeout: int = 30):
+    def __init__(
+        self, 
+        api_key: str, 
+        base_url: str, 
+        model: str, 
+        timeout: int = 30,
+        enable_retry: bool = True,
+        enable_cache: bool = False,
+        cache_ttl: int = 3600
+    ):
         """初始化 Provider
         
         Args:
@@ -25,6 +37,9 @@ class OpenAICompatibleProvider(LLMProvider):
             base_url: API 基础 URL
             model: 模型名称
             timeout: 请求超时时间(秒),默认 30 秒
+            enable_retry: 是否启用重试机制
+            enable_cache: 是否启用响应缓存
+            cache_ttl: 缓存有效期（秒）
         """
         from openai import OpenAI, Timeout
         
@@ -35,6 +50,27 @@ class OpenAICompatibleProvider(LLMProvider):
         )
         self.model = model
         self.timeout = timeout
+        
+        # 错误处理配置
+        self.enable_retry = enable_retry
+        self.retry_config = RetryConfig(
+            max_retries=3,
+            base_delay=1.0,
+            max_delay=30.0
+        )
+        
+        # 熔断器
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=5,
+            recovery_timeout=60.0
+        )
+        
+        # 响应缓存
+        self.enable_cache = enable_cache
+        if enable_cache:
+            self.cache = ResponseCache(ttl=cache_ttl)
+        else:
+            self.cache = None
     
     def chat(self, messages: List[Dict[str, str]]) -> str:
         """普通聊天
@@ -87,6 +123,49 @@ class OpenAICompatibleProvider(LLMProvider):
         tools: List[Dict[str, Any]]
     ) -> ChatResponse:
         """带工具调用的聊天"""
+        
+        # 尝试从缓存获取
+        if self.enable_cache and self.cache:
+            cached_response = self.cache.get(messages, tools)
+            if cached_response:
+                print("✓ 使用缓存响应")
+                return ChatResponse.from_dict(cached_response)
+        
+        # 定义实际API调用函数
+        def _call_api():
+            return self._execute_chat_with_tools(messages, tools)
+        
+        # 定义降级函数
+        def _fallback():
+            print("⚠️  API调用失败，使用离线模式")
+            return ChatResponse(
+                content="抱歉，目前无法连接到AI服务。请稍后重试。",
+                tool_calls=None
+            )
+        
+        # 执行（带重试）
+        if self.enable_retry:
+            response = retry_with_backoff(
+                _call_api,
+                config=self.retry_config,
+                fallback=_fallback,
+                circuit_breaker=self.circuit_breaker
+            )()
+        else:
+            response = _call_api()
+        
+        # 缓存响应
+        if self.enable_cache and self.cache and response.content:
+            self.cache.set(messages, response.to_dict(), tools)
+        
+        return response
+    
+    def _execute_chat_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]]
+    ) -> ChatResponse:
+        """执行实际的API调用"""
         import time
         import threading
         
