@@ -455,12 +455,18 @@ class ReActAgent:
                 return "操作已中断"
 
             iteration += 1
+            print(f"\n{'─' * 60}")
             print(f"[迭代 {iteration}/{self.max_iterations}]")
+            print(f"{'─' * 60}")
 
             # 调用 LLM (带工具)
             if use_streaming:
-                # 定义回调函数用于流式输出
+                # 定义回调函数用于流式输出 - 区分思考过程
+                print("\n💭 Agent 思考中...")
+                thinking_content = []
+                
                 def stream_callback(chunk):
+                    thinking_content.append(chunk)
                     print(chunk, end='', flush=True)
                 
                 response = self.provider.chat_with_tools_stream(
@@ -477,8 +483,11 @@ class ReActAgent:
 
             # 情况 1: 有工具调用
             if response.has_tool_calls:
+                print(f"\n🔧 需要调用工具...")
+                
                 for tool_call in response.tool_calls:
-                    print(f"调用工具: {tool_call.name}({tool_call.arguments})")
+                    print(f"\n  📞 调用工具: {tool_call.name}")
+                    print(f"     参数: {json.dumps(tool_call.arguments, ensure_ascii=False, indent=2)}")
 
                     # 执行工具
                     result = self._execute_function(
@@ -493,16 +502,23 @@ class ReActAgent:
                             # 成功，提取实际结果
                             actual_result = result_data.get("result", "")
                             attempt_info = f" (第{result_data.get('attempt', 1)}次尝试)" if result_data.get('attempt', 1) > 1 else ""
-                            print(f"工具结果{attempt_info}: {actual_result}\n")
+                            print(f"\n  ✅ 工具返回{attempt_info}:")
+                            # 格式化显示结果
+                            if isinstance(actual_result, str) and len(actual_result) > 200:
+                                print(f"     {actual_result[:200]}...")
+                            else:
+                                print(f"     {actual_result}")
                             result_for_llm = actual_result
                         else:
                             # 失败，返回错误信息
                             error_msg = result_data.get("error", "未知错误")
-                            print(f"✗ 工具执行失败: {error_msg}\n")
+                            print(f"\n  ❌ 工具执行失败:")
+                            print(f"     {error_msg}")
                             result_for_llm = result  # 将完整JSON返回给LLM，让它理解错误
                     except json.JSONDecodeError:
                         # 如果不是JSON格式，直接使用原始结果（向后兼容）
-                        print(f"工具结果: {result}\n")
+                        print(f"\n  📄 工具返回:")
+                        print(f"     {result}")
                         result_for_llm = result
 
                     # 添加工具调用和结果到消息历史
@@ -525,6 +541,8 @@ class ReActAgent:
                         "tool_call_id": tool_call.id,
                         "content": result_for_llm
                     })
+                
+                print(f"\n{'─' * 60}")
 
             # 情况 2: 没有工具调用,直接返回文本
             else:
@@ -539,7 +557,11 @@ class ReActAgent:
                     self._trim_conversation_history()
                     
                     print(f"\n{'=' * 60}")
-                    print(f"最终答案: {response.content}")
+                    print(f"💡 最终答案:")
+                    print(f"{'=' * 60}")
+                    # 如果是流式模式，已经输出过了，这里只打印分隔线
+                    if not use_streaming:
+                        print(response.content)
                     print(f"{'=' * 60}\n")
                     return response.content
                 else:
