@@ -17,9 +17,10 @@ def print_welcome():
     print("Rush - 基于 ReAct 框架的 AI Agent")
     print("="*60)
     print("\n输入问题开始对话,或使用以下命令:")
-    print("  /exit  - 退出程序")
-    print("  /clear - 清除对话历史")
-    print("  /help  - 显示帮助信息")
+    print("  /exit    - 退出程序")
+    print("  /clear   - 清除对话历史")
+    print("  /history - 查看对话历史")
+    print("  /help    - 显示帮助信息")
     print("="*60 + "\n")
 
 
@@ -30,9 +31,10 @@ def print_help(agent: ReActAgent):
         agent: ReAct Agent 实例
     """
     print("\n可用命令:")
-    print("  /exit  - 退出程序")
-    print("  /clear - 清除对话历史")
-    print("  /help  - 显示帮助信息")
+    print("  /exit    - 退出程序")
+    print("  /clear   - 清除对话历史")
+    print("  /history - 查看对话历史")
+    print("  /help    - 显示帮助信息")
     print("\n可用工具:")
     for tool in agent.get_available_tools():
         print(f"  {tool.description}")
@@ -67,6 +69,9 @@ def handle_command(command: str, agent: ReActAgent) -> bool:
         agent.clear_history()
         clear_screen()
         print_welcome()
+        return True
+    elif command.lower() == '/history':
+        print(agent.get_history_summary())
         return True
     elif command.lower() == '/help':
         print_help(agent)

@@ -62,8 +62,14 @@ class ReActAgent:
         # 最大迭代次数
         self.max_iterations = 5
 
-        # 对话历史
+        # 对话历史 - 用于多轮对话
         self.conversation_history = []
+        
+        # 最大历史长度（系统提示 + N轮对话）
+        self.max_history_length = 41  # system + 20*2 (user + assistant)
+        
+        # 中断事件（可选，由 main.py 设置）
+        self.interrupt_event = None
 
         # 构建系统提示词(包含 skills)
         self.base_system_prompt = self._build_system_prompt()
@@ -297,14 +303,18 @@ class ReActAgent:
         print(f"{'=' * 60}\n")
         print(f"使用 Provider: {self.provider.get_provider_name()}\n")
 
-        # 初始化消息历史
-        messages = [
-            {
+        # 如果是对话的第一轮，初始化系统提示
+        if not self.conversation_history:
+            self.conversation_history.append({
                 "role": "system",
                 "content": self.base_system_prompt
-            },
-            {"role": "user", "content": query}
-        ]
+            })
+        
+        # 添加用户问题到历史
+        self.conversation_history.append({"role": "user", "content": query})
+        
+        # 使用完整的历史记录进行对话
+        messages = self.conversation_history.copy()
 
         iteration = 0
         while iteration < self.max_iterations:
@@ -370,6 +380,15 @@ class ReActAgent:
             # 情况 2: 没有工具调用,直接返回文本
             else:
                 if response.content:
+                    # 将助手回复添加到对话历史
+                    self.conversation_history.append({
+                        "role": "assistant",
+                        "content": response.content
+                    })
+                    
+                    # 限制历史长度，避免超出上下文窗口
+                    self._trim_conversation_history()
+                    
                     print(f"\n{'=' * 60}")
                     print(f"最终答案: {response.content}")
                     print(f"{'=' * 60}\n")
@@ -383,6 +402,63 @@ class ReActAgent:
         """清除对话历史"""
         self.conversation_history = []
         print("对话历史已清除")
+    
+    def _trim_conversation_history(self):
+        """裁剪对话历史，避免超出上下文窗口
+        
+        保留系统提示和最近的 N 轮对话
+        """
+        if len(self.conversation_history) <= self.max_history_length:
+            return
+        
+        # 保留系统提示
+        system_message = self.conversation_history[0]
+        
+        # 保留最近的 max_history_length - 1 条消息
+        recent_messages = self.conversation_history[-(self.max_history_length - 1):]
+        
+        # 重新组合
+        self.conversation_history = [system_message] + recent_messages
+        
+        print(f"⚠️  对话历史过长，已裁剪至最近 {len(recent_messages)//2} 轮对话")
+    
+    def get_history_summary(self) -> str:
+        """获取对话历史摘要
+        
+        Returns:
+            str: 历史摘要信息
+        """
+        if not self.conversation_history:
+            return "暂无对话历史"
+        
+        # 计算对话轮数（减去系统提示）
+        conversation_count = len(self.conversation_history) - 1
+        rounds = conversation_count // 2
+        
+        summary_lines = [
+            f"对话历史统计:",
+            f"  总消息数: {len(self.conversation_history)}",
+            f"  对话轮数: {rounds}",
+            f"  最大允许: {(self.max_history_length - 1) // 2} 轮"
+        ]
+        
+        # 显示最近几轮对话的简要信息
+        if conversation_count > 0:
+            summary_lines.append(f"\n最近对话:")
+            # 显示最近 3 轮
+            recent_start = max(1, len(self.conversation_history) - 6)
+            for i in range(recent_start, len(self.conversation_history)):
+                msg = self.conversation_history[i]
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                if role == "user":
+                    preview = content[:50] + "..." if len(content) > 50 else content
+                    summary_lines.append(f"  用户: {preview}")
+                elif role == "assistant":
+                    preview = content[:50] + "..." if len(content) > 50 else content
+                    summary_lines.append(f"  AI: {preview}")
+        
+        return "\n".join(summary_lines)
 
     def get_available_tools(self) -> List[Tool]:
         """获取可用工具列表
