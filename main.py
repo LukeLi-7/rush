@@ -129,48 +129,54 @@ def main():
     # 设置 agent 的中断事件
     agent.set_interrupt_event(interrupt_event)
 
-    # REPL 循环
-    while True:
-        agent_interrupted = False  # 重置中断标志
-        interrupt_event.clear()  # 清除中断事件
+    try:
+        # REPL 循环
+        while True:
+            agent_interrupted = False  # 重置中断标志
+            interrupt_event.clear()  # 清除中断事件
 
-        try:
-            user_input = prompt(
-                "[Rush] > ",
-                history=FileHistory(history_path)
-            ).strip()
+            try:
+                user_input = prompt(
+                    "[Rush] > ",
+                    history=FileHistory(history_path)
+                ).strip()
 
-            if not user_input:
+                if not user_input:
+                    continue
+
+                # 处理内置命令
+                if user_input.startswith('/'):
+                    if not handle_command(user_input, agent):
+                        break
+                    continue  # 命令处理后跳过 Agent 执行
+
+                # 运行 ReAct Agent
+                result = agent.run(user_input, use_streaming=True)
+                
+            except KeyboardInterrupt:
+                # prompt_toolkit 的 KeyboardInterrupt (输入阶段)
+                print("\n\n⚠️  操作已中断,可以输入新问题")
+                agent.clear_history()
                 continue
-
-            # 处理内置命令
-            if user_input.startswith('/'):
-                if not handle_command(user_input, agent):
-                    break
-                continue  # 命令处理后跳过 Agent 执行
-
-            # 运行 ReAct Agent
-            result = agent.run(user_input, use_streaming=True)
-            
-        except KeyboardInterrupt:
-            # prompt_toolkit 的 KeyboardInterrupt (输入阶段)
-            print("\n\n⚠️  操作已中断,可以输入新问题")
-            agent.clear_history()
-            continue
-        except TimeoutError as e:
-            # API 超时
-            print(f"\n\n⚠️  {str(e)}")
-            print("可以输入新问题继续对话\n")
-            continue
-        except EOFError:
-            print("\n检测到输入结束,继续等待输入...")
-            continue
-        except Exception as e:
-            print(f"\n错误: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            print("\n可以输入新问题继续对话\n")
-            continue
+            except TimeoutError as e:
+                # API 超时
+                print(f"\n\n⚠️  {str(e)}")
+                print("可以输入新问题继续对话\n")
+                continue
+            except EOFError:
+                print("\n检测到输入结束,继续等待输入...")
+                continue
+            except Exception as e:
+                print(f"\n错误: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                print("\n可以输入新问题继续对话\n")
+                continue
+    finally:
+        # 程序退出时清理资源
+        print("\n👋 正在退出 Rush Agent...")
+        agent.cleanup()
+        print("再见!")
 
 
 if __name__ == "__main__":

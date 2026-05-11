@@ -418,6 +418,18 @@ class ReActAgent:
         if self.interrupt_event and self.interrupt_event.is_set():
             return True
         return False
+    
+    def _handle_interruption(self):
+        """处理中断 - 清理资源并返回
+        
+        Returns:
+            str: 中断消息
+        """
+        print("\n⚠️  操作已中断")
+        # 不清理所有资源，只重置中断状态
+        if self.interrupt_event:
+            self.interrupt_event.clear()
+        return "操作已中断"
 
     def run(self, query: str, use_streaming: bool = True) -> str:
         """运行 ReAct 循环 (Function Calling 模式)
@@ -451,8 +463,7 @@ class ReActAgent:
         while iteration < self.max_iterations:
             # 检查是否被中断
             if self._check_interrupted():
-                print("\n⚠️  操作已中断")
-                return "操作已中断"
+                return self._handle_interruption()
 
             iteration += 1
             print(f"\n{'─' * 60}")
@@ -573,6 +584,63 @@ class ReActAgent:
         """清除对话历史"""
         self.conversation_history = []
         print("对话历史已清除")
+    
+    def cleanup(self):
+        """清理所有资源
+        
+        确保 MCP connections、asyncio loop 等资源正确关闭
+        """
+        print("\n🧹 正在清理资源...")
+        
+        try:
+            # 1. 断开所有 MCP connections
+            if self.mcp_manager and self.mcp_manager.clients:
+                import asyncio
+                import warnings
+                
+                # 为每个server创建新的loop
+                for server_name in list(self.mcp_manager.clients.keys()):
+                    try:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore", ResourceWarning)
+                            
+                            # 断开 server
+                            loop.run_until_complete(
+                                self.mcp_manager.disconnect_server(server_name)
+                            )
+                            print(f"  ✓ 已断开 MCP server: {server_name}")
+                        
+                        loop.close()
+                    except Exception as e:
+                        print(f"  ⚠️  断开 {server_name} 失败: {e}")
+                
+                print(f"  ✓ 已清理 {len(self.mcp_manager.clients)} 个 MCP connections")
+            
+            # 2. 清除工具注册
+            self.tools.clear()
+            print("  ✓ 已清除工具注册")
+            
+            # 3. 清除对话历史
+            self.conversation_history.clear()
+            print("  ✓ 已清除对话历史")
+            
+            # 4. 重置中断事件
+            if self.interrupt_event:
+                self.interrupt_event.clear()
+            
+            print("✅ 资源清理完成\n")
+            
+        except Exception as e:
+            print(f"⚠️  资源清理出错: {e}")
+    
+    def __del__(self):
+        """析构函数 - 确保资源被清理"""
+        try:
+            self.cleanup()
+        except:
+            pass  # 析构函数中忽略异常
     
     def _trim_conversation_history(self):
         """裁剪对话历史，避免超出上下文窗口
