@@ -17,10 +17,11 @@ def print_welcome():
     print("Rush - 基于 ReAct 框架的 AI Agent")
     print("="*60)
     print("\n输入问题开始对话,或使用以下命令:")
-    print("  /exit    - 退出程序")
-    print("  /clear   - 清除对话历史")
-    print("  /history - 查看对话历史")
-    print("  /help    - 显示帮助信息")
+    print("  /exit      - 退出程序")
+    print("  /clear     - 清除对话历史")
+    print("  /history   - 查看对话历史")
+    print("  /skills    - 查看Skill统计")
+    print("  /help      - 显示帮助信息")
     print("="*60 + "\n")
 
 
@@ -31,10 +32,11 @@ def print_help(agent: ReActAgent):
         agent: ReAct Agent 实例
     """
     print("\n可用命令:")
-    print("  /exit    - 退出程序")
-    print("  /clear   - 清除对话历史")
-    print("  /history - 查看对话历史")
-    print("  /help    - 显示帮助信息")
+    print("  /exit      - 退出程序")
+    print("  /clear     - 清除对话历史")
+    print("  /history   - 查看对话历史")
+    print("  /skills    - 查看Skill统计")
+    print("  /help      - 显示帮助信息")
     print("\n可用工具:")
     for tool in agent.get_available_tools():
         print(f"  {tool.description}")
@@ -72,6 +74,34 @@ def handle_command(command: str, agent: ReActAgent) -> bool:
         return True
     elif command.lower() == '/history':
         print(agent.get_history_summary())
+        return True
+    elif command.lower() == '/skills':
+        # 显示Skill统计
+        stats = agent.skill_manager.get_all_stats()
+        if stats:
+            print("\n📊 Skill使用统计:")
+            print("-" * 70)
+            for skill_name, skill_stats in sorted(stats.items(), key=lambda x: x[1].get('usage_count', 0), reverse=True):
+                usage = skill_stats.get('usage_count', 0)
+                success_rate = skill_stats.get('success_rate', 0) * 100
+                avg_rating = skill_stats.get('avg_rating', 0)
+                
+                print(f"\n  {skill_name}:")
+                print(f"    使用次数: {usage}")
+                print(f"    成功率: {success_rate:.1f}%")
+                if skill_stats.get('total_ratings', 0) > 0:
+                    print(f"    平均评分: {avg_rating:.1f}/5.0")
+                last_used = skill_stats.get('last_used')
+                if last_used:
+                    from datetime import datetime
+                    try:
+                        last_dt = datetime.fromisoformat(last_used)
+                        print(f"    最后使用: {last_dt.strftime('%Y-%m-%d %H:%M')}")
+                    except:
+                        pass
+            print("-" * 70)
+        else:
+            print("\n暂无Skill使用统计")
         return True
     elif command.lower() == '/help':
         print_help(agent)

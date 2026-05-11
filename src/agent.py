@@ -452,6 +452,15 @@ class ReActAgent:
         print(f"问题: {query}")
         print(f"{'=' * 60}\n")
         print(f"使用 Provider: {self.provider.get_provider_name()}\n")
+        
+        # Skill智能推荐
+        try:
+            recommendations_text = self.skill_manager.get_recommendations_text(query, top_k=2)
+            if recommendations_text and "没有找到" not in recommendations_text:
+                print(recommendations_text)
+        except Exception as e:
+            # 推荐失败不影响主流程
+            pass
 
         # 如果是对话的第一轮，初始化系统提示
         if not self.conversation_history:

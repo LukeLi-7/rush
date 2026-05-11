@@ -8,6 +8,17 @@ import json
 from typing import Dict, List, Optional
 from pathlib import Path
 
+# 延迟导入，避免循环依赖
+_recommender = None
+
+def get_recommender(skills_manager=None):
+    """获取推荐器实例（单例）"""
+    global _recommender
+    if _recommender is None and skills_manager is not None:
+        from src.skills.recommender import SkillRecommender
+        _recommender = SkillRecommender(skills_manager)
+    return _recommender
+
 
 class AgentSkill:
     """Agent Skill 定义
@@ -314,6 +325,95 @@ class SkillManager:
             })
         
         return result
+    
+    def recommend_skills(self, query: str, top_k: int = 3) -> List:
+        """基于用户问题推荐Skill
+        
+        Args:
+            query: 用户问题
+            top_k: 返回top k个推荐
+            
+        Returns:
+            List: 推荐的Skill列表 [(skill_name, score), ...]
+        """
+        recommender = get_recommender(self)
+        if recommender:
+            return recommender.recommend_skills(query, top_k)
+        return []
+    
+    def get_recommendations_text(self, query: str, top_k: int = 3) -> str:
+        """获取推荐文本
+        
+        Args:
+            query: 用户问题
+            top_k: 推荐数量
+            
+        Returns:
+            str: 格式化的推荐文本
+        """
+        recommender = get_recommender(self)
+        if recommender:
+            return recommender.get_recommendations_text(query, top_k)
+        return ""
+    
+    def record_skill_usage(self, skill_name: str, success: bool = True):
+        """记录Skill使用
+        
+        Args:
+            skill_name: Skill名称
+            success: 是否成功
+        """
+        recommender = get_recommender(self)
+        if recommender:
+            recommender.record_skill_usage(skill_name, success)
+    
+    def rate_skill(self, skill_name: str, rating: float):
+        """为Skill评分
+        
+        Args:
+            skill_name: Skill名称
+            rating: 评分 (0-5)
+        """
+        recommender = get_recommender(self)
+        if recommender:
+            recommender.rate_skill(skill_name, rating)
+    
+    def get_skill_stats(self, skill_name: str) -> Optional[dict]:
+        """获取Skill统计信息
+        
+        Args:
+            skill_name: Skill名称
+            
+        Returns:
+            dict: 统计信息
+        """
+        recommender = get_recommender(self)
+        if recommender:
+            return recommender.get_skill_stats(skill_name)
+        return None
+    
+    def get_all_stats(self) -> Dict[str, dict]:
+        """获取所有Skill统计信息
+        
+        Returns:
+            Dict[str, dict]: {skill_name: stats_dict}
+        """
+        recommender = get_recommender(self)
+        if recommender:
+            return recommender.get_all_stats()
+        return {}
+    
+    def auto_manage_skills(self, enable_threshold: float = 0.8, disable_threshold: float = 0.3):
+        """自动管理Skill（启用高表现，禁用低表现）
+        
+        Args:
+            enable_threshold: 启用阈值（成功率）
+            disable_threshold: 禁用阈值（成功率）
+        """
+        recommender = get_recommender(self)
+        if recommender:
+            recommender.auto_enable_high_performing_skills(enable_threshold)
+            recommender.auto_disable_low_performing_skills(disable_threshold)
     
     def _save_metadata(self):
         """保存元数据 (当前未使用,保留接口)"""
